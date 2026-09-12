@@ -16,6 +16,9 @@
     "db:generate": "pnpm --filter @developer-brand-copilot/api db:generate",
     "db:validate": "pnpm --filter @developer-brand-copilot/api db:validate",
     "db:format": "pnpm --filter @developer-brand-copilot/api db:format",
+    "db:migrate:dev": "pnpm --filter @developer-brand-copilot/api db:migrate:dev",
+    "db:migrate:deploy": "pnpm --filter @developer-brand-copilot/api db:migrate:deploy",
+    "db:migrate:status": "pnpm --filter @developer-brand-copilot/api db:migrate:status",
     "db:check": "pnpm --filter @developer-brand-copilot/api db:check"
   },
   "devDependencies": {

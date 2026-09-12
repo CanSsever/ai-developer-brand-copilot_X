@@ -161,6 +161,45 @@ This tracker records verified repository state. Items are checked only after the
 
 - [x] Task 0.3 complete
 
+## Task 0.4 — Core Ownership Data Model & Initial Migration
+
+### Ownership schema
+
+- [x] minimum UUID `User` ownership-root model implemented
+- [x] minimum UUID `Project` model implemented
+- [x] required one-to-many `User` → `Project` ownership relation implemented
+- [x] required `Project.userId` ownership foreign key represented in the schema
+- [x] owner-based project query index implemented
+- [x] user deletion cascades to owned projects
+- [x] required project timezone is persisted
+- [x] UTC-compatible creation and update timestamps are represented
+- [x] no password, OAuth token, profile, billing, or speculative product fields introduced
+
+### Initial migration
+
+- [x] first Prisma migration created as `20260912215435_init_core_ownership`
+- [x] migration SQL contains only the `User` and `Project` ownership structures
+- [x] first Prisma migration applied successfully to Supabase
+- [x] Prisma migration pipeline verified against the configured direct connection
+
+### Tests and quality
+
+- [x] ownership schema tests cover model existence, required ownership, UUIDs, timestamps, timezone, index, and cascade behavior
+- [x] ownership model tests pass
+- [x] Prisma Client generation passes
+- [x] Prisma validation passes
+- [x] runtime database connectivity remains green
+- [x] `pnpm lint` passes
+- [x] `pnpm typecheck` passes
+- [x] `pnpm test` passes
+- [x] `pnpm build` passes
+- [x] documentation reflects the core ownership model and migration workflow
+- [x] no Task 0.5 or later implementation introduced
+
+### Task Status
+
+- [x] Task 0.4 complete
+
 ## Phase 0 Exit Gate
 
 - [x] centralized configuration implemented
