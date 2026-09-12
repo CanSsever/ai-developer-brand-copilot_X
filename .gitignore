@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+node_modules.store-mismatch-backup/
+
+# Build output
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+/apps/api/src/generated/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+pnpm-debug.log*
+
+# Editors and operating systems
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

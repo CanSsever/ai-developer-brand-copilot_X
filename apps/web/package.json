@@ -1,0 +1,36 @@
+{
+  "name": "@developer-brand-copilot/web",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "predev": "pnpm --filter @developer-brand-copilot/config build",
+    "dev": "next dev --port 3000",
+    "prebuild": "pnpm --filter @developer-brand-copilot/config build",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "pretypecheck": "pnpm --filter @developer-brand-copilot/config build",
+    "typecheck": "tsc --noEmit",
+    "pretest": "pnpm --filter @developer-brand-copilot/config build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@developer-brand-copilot/config": "workspace:*",
+    "next": "^16.3.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.5",
+    "jsdom": "^30.0.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

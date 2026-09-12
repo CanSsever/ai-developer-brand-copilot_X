@@ -1,0 +1,45 @@
+{
+  "name": "@developer-brand-copilot/api",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "predev": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
+    "dev": "nest start --watch",
+    "prebuild": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "pretypecheck": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
+    "typecheck": "tsc --noEmit",
+    "pretest": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
+    "test": "vitest run",
+    "db:generate": "prisma generate --config prisma.config.ts",
+    "db:validate": "prisma validate --config prisma.config.ts",
+    "db:format": "prisma format --config prisma.config.ts",
+    "predb:check": "pnpm db:generate && pnpm build",
+    "db:check": "node dist/database/check-database.js"
+  },
+  "dependencies": {
+    "@developer-brand-copilot/config": "workspace:*",
+    "@developer-brand-copilot/contracts": "workspace:*",
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/platform-express": "^11.1.28",
+    "@prisma/adapter-pg": "7.9.1",
+    "@prisma/client": "7.9.1",
+    "dotenv": "17.2.4",
+    "pg": "8.22.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@nestjs/testing": "^11.1.28",
+    "@types/node": "^22.19.0",
+    "@types/pg": "8.15.6",
+    "@types/supertest": "^7.2.1",
+    "prisma": "7.9.1",
+    "supertest": "^7.2.2",
+    "typescript": "~5.9.3",
+    "vitest": "^4.1.10"
+  }
+}
