@@ -11,6 +11,8 @@ const testConfig = {
   PORT: 3001,
   DATABASE_URL: "postgresql://user:password@localhost:5432/app",
   DIRECT_URL: "postgresql://user:password@localhost:5432/app",
+  SUPABASE_URL: "https://project-ref.supabase.co",
+  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_safe_example_key",
 };
 
 describe("GET /health", () => {

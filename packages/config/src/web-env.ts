@@ -2,10 +2,10 @@ import { z } from "zod";
 
 import { toEnvironmentValidationError } from "./environment-validation";
 
-const publicWebEnvSchema = z.object({
-  NEXT_PUBLIC_API_BASE_URL: z
+const publicHttpUrl = (fieldName: string) =>
+  z
     .string()
-    .url("NEXT_PUBLIC_API_BASE_URL must be an absolute URL")
+    .url(`${fieldName} must be an absolute URL`)
     .refine(
       (value) => {
         try {
@@ -16,7 +16,19 @@ const publicWebEnvSchema = z.object({
           return false;
         }
       },
-      "NEXT_PUBLIC_API_BASE_URL must use HTTP or HTTPS"
+      `${fieldName} must use HTTP or HTTPS`
+    );
+
+const publicWebEnvSchema = z.object({
+  NEXT_PUBLIC_API_BASE_URL: publicHttpUrl("NEXT_PUBLIC_API_BASE_URL"),
+  NEXT_PUBLIC_SITE_URL: publicHttpUrl("NEXT_PUBLIC_SITE_URL"),
+  NEXT_PUBLIC_SUPABASE_URL: publicHttpUrl("NEXT_PUBLIC_SUPABASE_URL"),
+  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z
+    .string()
+    .trim()
+    .min(
+      20,
+      "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY must be a non-empty publishable key"
     ),
 });
 

@@ -200,11 +200,86 @@ This tracker records verified repository state. Items are checked only after the
 
 - [x] Task 0.4 complete
 
+## Task 0.5 — Supabase Authentication Readiness
+
+### Configuration and boundaries
+
+- [x] API Supabase URL and publishable-key configuration is typed and validated
+- [x] web Supabase URL, publishable key, site URL, and API URL are typed and validated
+- [x] browser configuration exposes explicitly approved public fields only
+- [x] service-role keys and database URLs are excluded from browser configuration
+- [x] safe environment examples document required auth variables
+
+### Web authentication
+
+- [x] supported `@supabase/ssr` browser and server clients are implemented
+- [x] Next.js session refresh proxy is implemented
+- [x] signed-out and authenticated application-shell states are implemented and tested
+- [x] GitHub OAuth sign-in server action is implemented
+- [x] PKCE callback code exchange is implemented
+- [x] sign-out and cookie-backed session restoration are implemented
+
+### Backend authentication
+
+- [x] bearer-token extraction is implemented without custom identity headers
+- [x] Supabase access-token cryptographic verification boundary is implemented
+- [x] issuer, authenticated audience, expiry, and UUID subject are validated
+- [x] missing and invalid tokens return controlled HTTP 401 responses
+- [x] verified identity propagation is typed
+- [x] protected `GET /auth/me` returns only the application user UUID
+
+### User persistence
+
+- [x] verified Supabase `sub` resolves to application `User.id`
+- [x] user resolution uses an idempotent unique upsert
+- [x] passwords, access tokens, refresh tokens, and provider secrets are not persisted
+- [x] repeated resolution and secret-free persistence behavior are tested
+- [x] no Prisma schema change or empty migration was introduced
+
+### Automated verification
+
+- [x] authentication configuration tests pass
+- [x] browser public/server isolation tests pass
+- [x] missing-token and invalid-token tests pass
+- [x] valid identity propagation test passes
+- [x] user resolution and idempotent sync tests pass
+- [x] web authentication state tests pass
+- [x] `pnpm lint` passes
+- [x] `pnpm typecheck` passes
+- [x] `pnpm test` passes
+- [x] `pnpm build` passes
+- [x] `pnpm db:generate` passes
+- [x] `pnpm db:validate` passes
+- [x] `pnpm db:check` passes against Supabase PostgreSQL
+- [x] `pnpm db:migrate:status` reports the schema up to date
+
+### Manual Supabase verification
+
+- [x] local ignored API and web env files contain the required Supabase Auth configuration
+- [x] GitHub OAuth App and Supabase GitHub provider configuration are verified
+- [x] browser GitHub sign-in succeeds against the real provider
+- [x] browser session restoration and sign-out succeed against the real provider
+- [x] a real Supabase access token succeeds against `GET /auth/me`
+- [x] repeated real verification resolves the same application `User` without duplicates
+- [x] temporary development-only auth verification route and helper were removed
+
+### Scope integrity
+
+- [x] RLS was not implemented
+- [x] tenant isolation was not implemented
+- [x] GitHub App installation or ingestion was not implemented
+- [x] no Task 0.6 or later implementation was introduced
+
+### Task Status
+
+- [x] authentication implemented
+- [x] Task 0.5 complete
+
 ## Phase 0 Exit Gate
 
 - [x] centralized configuration implemented
 - [x] PostgreSQL connectivity verified against Supabase
-- [ ] authenticated web and API shells run in the documented environment
+- [x] authenticated web and API shells run in the documented environment
 - [ ] baseline ownership migration and RLS policies exist
 - [ ] cross-user isolation integration tests pass
 - [ ] CI enforces required quality gates

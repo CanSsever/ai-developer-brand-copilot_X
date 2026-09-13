@@ -1,13 +1,11 @@
 import "dotenv/config";
 
-import { parseApiEnv } from "@developer-brand-copilot/config";
+import { parseDatabaseEnv } from "@developer-brand-copilot/config";
 
 import { PrismaService } from "./prisma.service";
 
 async function checkDatabase(): Promise<void> {
-  const config = parseApiEnv({
-    NODE_ENV: process.env.NODE_ENV,
-    PORT: process.env.PORT,
+  const config = parseDatabaseEnv({
     DATABASE_URL: process.env.DATABASE_URL,
     DIRECT_URL: process.env.DIRECT_URL,
   });

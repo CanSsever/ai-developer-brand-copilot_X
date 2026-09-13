@@ -29,6 +29,7 @@
     "@nestjs/platform-express": "^11.1.28",
     "@prisma/adapter-pg": "7.9.1",
     "@prisma/client": "7.9.1",
+    "@supabase/supabase-js": "2.116.0",
     "dotenv": "17.2.4",
     "pg": "8.22.0",
     "reflect-metadata": "^0.2.2",
