@@ -275,13 +275,76 @@ This tracker records verified repository state. Items are checked only after the
 - [x] authentication implemented
 - [x] Task 0.5 complete
 
+## Task 0.6 — Tenant Isolation & Row Level Security
+
+### RLS migration
+
+- [x] descriptive `20260913024500_enable_core_tenant_rls` migration created
+- [x] RLS enabled for the `User` table
+- [x] RLS enabled for the `Project` table
+- [x] anonymous table grants removed
+- [x] authenticated grants reduced to required operations
+- [x] own-User SELECT policy uses `auth.uid()`
+- [x] direct authenticated User insert, update, and delete remain denied
+- [x] Project SELECT, INSERT, UPDATE, and DELETE policies use `auth.uid()` ownership
+- [x] Project UPDATE policy prevents ownership reassignment
+- [x] no unrestricted true policy exists
+- [x] migration applied successfully to the real Supabase development database
+- [x] existing ownership rows remained intact after migration
+
+### API ownership boundary
+
+- [x] authenticated identity continues to originate from verified Supabase claims
+- [x] request query and custom-header user IDs cannot override authenticated identity
+- [x] application User synchronization remains idempotent and server-side
+- [x] no speculative Project API was introduced
+- [x] Prisma backend role was verified to bypass RLS and is documented accurately
+
+### Automated and live verification
+
+- [x] RLS migration security tests cover tables, grants, policies, and unsafe-policy absence
+- [x] Task 0.5 authentication regression tests pass
+- [x] anonymous Supabase access to both ownership tables is denied
+- [x] temporary two-user authenticated RLS verification flow completed and removed
+- [x] two distinct real Supabase users were authenticated for the live isolation test
+- [x] bidirectional real cross-user User and Project reads were denied
+- [x] bidirectional real cross-user Project insert, update, and delete were denied
+- [x] real own-user and own-Project operations succeeded for both users
+
+### Security and repository integrity
+
+- [x] tracked `.gitignore` no longer contains database connection values
+- [x] previously exposed database credential was rotated and repository history remediated
+- [x] no service-role key or database credential was introduced into browser code
+- [x] no access token, refresh token, JWT, or provider secret is logged by verification code
+- [x] no Task 0.7 or later implementation was introduced
+
+### Quality gates
+
+- [x] `pnpm lint` passes after final documentation
+- [x] `pnpm typecheck` passes after final documentation
+- [x] `pnpm test` passes after final documentation
+- [x] `pnpm build` passes after final documentation
+- [x] `pnpm db:generate` passes
+- [x] `pnpm db:validate` passes
+- [x] `pnpm db:check` passes
+- [x] `pnpm db:migrate:deploy` passes
+- [x] `pnpm db:migrate:status` reports the schema up to date
+
+### Task Status
+
+- [x] RLS implemented
+- [x] tenant isolation verified
+- [x] cross-user isolation verified
+- [x] Task 0.6 complete
+
 ## Phase 0 Exit Gate
 
 - [x] centralized configuration implemented
 - [x] PostgreSQL connectivity verified against Supabase
 - [x] authenticated web and API shells run in the documented environment
-- [ ] baseline ownership migration and RLS policies exist
-- [ ] cross-user isolation integration tests pass
+- [x] baseline ownership migration and RLS policies exist
+- [x] cross-user isolation integration tests pass
 - [ ] CI enforces required quality gates
 - [ ] secret handling and secret scanning are verified
 - [ ] structured errors, correlation IDs, health checks, and log redaction are verified

@@ -1,6 +1,6 @@
 # AI Developer Brand Copilot
 
-This repository contains the engineering foundation for AI Developer Brand Copilot. It is currently in **Phase 0 — Foundation**. Core ownership persistence and the Supabase authentication foundation are implemented. Product intelligence, GitHub App ingestion, RLS tenant isolation, and AI integration are not implemented yet.
+This repository contains the engineering foundation for AI Developer Brand Copilot. It is currently in **Phase 0 — Foundation**. Core ownership persistence, Supabase authentication, and the initial RLS policies are implemented. Live two-user tenant-isolation verification remains incomplete. Product intelligence, GitHub App ingestion, and AI integration are not implemented yet.
 
 ## Prerequisites
 
@@ -109,5 +109,19 @@ The provider dashboards cannot be configured from repository code. Complete thes
 The real configured Supabase and GitHub OAuth flow was manually verified successfully on September 13, 2026. The verified flow covered GitHub login, the Supabase callback, authenticated web state, session restoration after refresh, sign-out, and a real bearer-authenticated `GET /auth/me` response with HTTP 200. The application user identity matched the verified Supabase subject and remained stable across refresh.
 
 The development-only verification route used for this one-time check was removed after verification. No access token, refresh token, cookie, JWT, OAuth secret, database credential, or personal user identifier is retained in this record.
+
+## Tenant isolation and Row Level Security
+
+The current tenant boundary is `User.id` → `Project.userId`. Supabase Auth proves identity, and API code derives the application user only from the cryptographically verified bearer-token subject. Request query parameters, bodies, and custom headers are not authorization evidence.
+
+The `User` and `Project` tables have RLS enabled through the `20260913024500_enable_core_tenant_rls` migration. Anonymous roles have no grants. Authenticated Supabase database requests may select only their own `User` row. They may select, insert, update, and delete only `Project` rows whose `userId` equals `auth.uid()`; update checks prevent ownership reassignment. Direct authenticated creation, update, and deletion of application `User` rows remain denied because user synchronization is a server responsibility.
+
+RLS protects authenticated Supabase/PostgREST data access. The Prisma API uses the configured PostgreSQL backend role, which has `BYPASSRLS`; its queries are not filtered by these policies. Therefore RLS is defense in depth, not a replacement for API ownership constraints. Every future ownership-sensitive API query must derive and apply the verified `AuthenticatedUser.id` scope.
+
+### Real two-user RLS verification record
+
+Real two-user RLS verification completed successfully on September 13, 2026, using two distinct authenticated Supabase users. The run verified own-User access, own-Project access and update, bidirectional cross-user User and Project read denial, bidirectional cross-user Project update and delete denial, bidirectional cross-owner Project insert denial, direct authenticated User insert denial, cross-user User update and delete denial, and rightful-owner access after rejected cross-user mutations. Temporary Projects were cleaned up successfully.
+
+The development-only browser registration route, server action, in-memory token handoff, loopback coordinator, and manual verification command were removed after the successful run. No user IDs, access tokens, refresh tokens, JWTs, cookies, credentials, or provider payloads from the verification are retained in the repository or this record.
 
 Never paste an access token, refresh token, GitHub client secret, or database URL into source files, logs, documentation, commits, or chat.

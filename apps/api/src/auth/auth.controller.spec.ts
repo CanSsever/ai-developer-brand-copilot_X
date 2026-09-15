@@ -8,6 +8,9 @@ import { PrismaService } from "../database/prisma.service";
 import { AUTH_CLAIMS_VERIFIER } from "./auth.tokens";
 
 const subject = "123e4567-e89b-42d3-a456-426614174000";
+const otherSubject = "223e4567-e89b-42d3-a456-426614174000";
+const validAccessToken =
+  "eyJhbGciOiJIUzI1NiJ9.session-segment.signature";
 const testConfig = {
   NODE_ENV: "test" as const,
   PORT: 3001,
@@ -78,11 +81,13 @@ describe("GET /auth/me", () => {
 
     await request(app.getHttpServer())
       .get("/auth/me")
-      .set("Authorization", "Bearer valid-token")
+      .query({ userId: otherSubject })
+      .set("Authorization", "Bearer " + validAccessToken)
+      .set("x-user-id", otherSubject)
       .expect(200)
       .expect({ id: subject });
 
-    expect(verifyAccessToken).toHaveBeenCalledWith("valid-token");
+    expect(verifyAccessToken).toHaveBeenCalledWith(validAccessToken);
     expect(upsert).toHaveBeenCalledWith({
       where: { id: subject },
       create: { id: subject },
