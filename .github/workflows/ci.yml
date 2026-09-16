@@ -39,6 +39,7 @@ jobs:
 
       - name: Activate repository pnpm version
         run: |
+          npm install --global corepack@0.34.5
           corepack enable
           corepack prepare pnpm@11.22.0 --activate
 
