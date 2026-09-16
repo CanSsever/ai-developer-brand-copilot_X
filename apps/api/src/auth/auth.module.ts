@@ -14,6 +14,7 @@ export class AuthModule {
   static register(config: SupabaseAuthConfig): DynamicModule {
     return {
       module: AuthModule,
+      global: true,
       controllers: [AuthController],
       providers: [
         {
@@ -28,6 +29,7 @@ export class AuthModule {
         UserIdentityService,
         BearerAuthGuard,
       ],
+      exports: [AuthIdentityService, UserIdentityService, BearerAuthGuard],
     };
   }
 }

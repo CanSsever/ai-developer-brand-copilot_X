@@ -96,6 +96,9 @@ importers:
       '@developer-brand-copilot/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@developer-brand-copilot/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@supabase/ssr':
         specifier: 0.12.7
         version: 0.12.7(@supabase/supabase-js@2.116.0)

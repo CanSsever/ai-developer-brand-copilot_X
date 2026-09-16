@@ -33,6 +33,8 @@ describe("parsePublicWebEnv", () => {
       SUPABASE_SERVICE_ROLE_KEY: "never-expose",
       SUPABASE_URL: "https://server-only.supabase.co",
       SUPABASE_PUBLISHABLE_KEY: "server-only-key",
+      GITHUB_APP_CLIENT_SECRET: "server-only-github-secret",
+      GITHUB_APP_PRIVATE_KEY: "server-only-private-key",
       DATABASE_URL: "postgresql://never-expose",
     });
 
@@ -43,6 +45,8 @@ describe("parsePublicWebEnv", () => {
     expect(publicConfig).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
     expect(publicConfig).not.toHaveProperty("SUPABASE_URL");
     expect(publicConfig).not.toHaveProperty("SUPABASE_PUBLISHABLE_KEY");
+    expect(publicConfig).not.toHaveProperty("GITHUB_APP_CLIENT_SECRET");
+    expect(publicConfig).not.toHaveProperty("GITHUB_APP_PRIVATE_KEY");
     expect(publicConfig).not.toHaveProperty("DATABASE_URL");
   });
 });

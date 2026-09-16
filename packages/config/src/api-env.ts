@@ -43,6 +43,33 @@ const publishableKey = z
   .trim()
   .min(20, "SUPABASE_PUBLISHABLE_KEY must be a non-empty publishable key");
 
+const githubCallbackUrl = z
+  .string()
+  .url("GITHUB_APP_CALLBACK_URL must be an absolute URL")
+  .refine((value) => {
+    const url = new URL(value);
+    return (
+      (url.protocol === "https:" ||
+        (url.protocol === "http:" &&
+          (url.hostname === "localhost" || url.hostname === "127.0.0.1"))) &&
+      url.username === "" &&
+      url.password === "" &&
+      url.search === "" &&
+      url.hash === ""
+    );
+  }, "GITHUB_APP_CALLBACK_URL must use HTTPS (HTTP is allowed only for localhost)");
+
+const githubPrivateKey = z
+  .string()
+  .min(1, "GITHUB_APP_PRIVATE_KEY is required")
+  .transform((value) => value.replace(/\\n/g, "\n").trim())
+  .refine(
+    (value) =>
+      /-----BEGIN (?:RSA )?PRIVATE KEY-----/.test(value) &&
+      /-----END (?:RSA )?PRIVATE KEY-----/.test(value),
+    "GITHUB_APP_PRIVATE_KEY must be a PEM private key"
+  );
+
 const apiEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce
@@ -55,6 +82,14 @@ const apiEnvSchema = z.object({
   DIRECT_URL: postgresqlUrl,
   SUPABASE_URL: supabaseUrl,
   SUPABASE_PUBLISHABLE_KEY: publishableKey,
+  GITHUB_APP_CLIENT_ID: z.string().trim().min(1),
+  GITHUB_APP_CLIENT_SECRET: z.string().trim().min(20),
+  GITHUB_APP_SLUG: z
+    .string()
+    .trim()
+    .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/),
+  GITHUB_APP_PRIVATE_KEY: githubPrivateKey,
+  GITHUB_APP_CALLBACK_URL: githubCallbackUrl,
 });
 
 const databaseEnvSchema = apiEnvSchema.pick({

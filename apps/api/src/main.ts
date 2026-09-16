@@ -13,6 +13,11 @@ async function bootstrap(): Promise<void> {
     DIRECT_URL: process.env.DIRECT_URL,
     SUPABASE_URL: process.env.SUPABASE_URL,
     SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY,
+    GITHUB_APP_CLIENT_ID: process.env.GITHUB_APP_CLIENT_ID,
+    GITHUB_APP_CLIENT_SECRET: process.env.GITHUB_APP_CLIENT_SECRET,
+    GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
+    GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
+    GITHUB_APP_CALLBACK_URL: process.env.GITHUB_APP_CALLBACK_URL,
   });
   const app = await NestFactory.create(AppModule.register(config));
 

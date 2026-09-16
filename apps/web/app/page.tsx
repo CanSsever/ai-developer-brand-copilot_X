@@ -1,6 +1,7 @@
 import { createClient } from "../lib/supabase/server";
 import { signInWithGithub, signOut } from "./auth/actions";
 import { AuthStatus } from "./auth-status";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function HomePage() {
         signInAction={signInWithGithub}
         signOutAction={signOut}
       />
+      {userId ? <Link href="/github/connect">Manage GitHub App connection</Link> : null}
     </main>
   );
 }

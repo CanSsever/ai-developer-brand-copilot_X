@@ -13,6 +13,12 @@ const testConfig = {
   DIRECT_URL: "postgresql://user:password@localhost:5432/app",
   SUPABASE_URL: "https://project-ref.supabase.co",
   SUPABASE_PUBLISHABLE_KEY: "sb_publishable_safe_example_key",
+  GITHUB_APP_CLIENT_ID: "Iv1.safe-test-client",
+  GITHUB_APP_CLIENT_SECRET: "safe_test_client_secret_value",
+  GITHUB_APP_SLUG: "developer-brand-copilot-test",
+  GITHUB_APP_PRIVATE_KEY:
+    "-----BEGIN PRIVATE KEY-----\nsafe-test-key-material\n-----END PRIVATE KEY-----",
+  GITHUB_APP_CALLBACK_URL: "http://localhost:3000/github/callback",
 };
 
 describe("GET /health", () => {

@@ -338,6 +338,88 @@ This tracker records verified repository state. Items are checked only after the
 - [x] cross-user isolation verified
 - [x] Task 0.6 complete
 
+## Task 0.7 — GitHub App Connection Foundation
+
+### Architecture and configuration
+
+- [x] Supabase login and GitHub App repository authorization remain separate
+- [x] typed fail-fast GitHub App server configuration is implemented
+- [x] GitHub App private key and client secret are server-only
+- [x] safe environment placeholders support multiline private keys
+- [x] GitHub App JWT generation uses RS256 and a sub-ten-minute lifetime
+- [x] installation and user access tokens are ephemeral and never persisted
+
+### Installation security
+
+- [x] installation start requires an authenticated application user
+- [x] target Project ownership is verified before redirect
+- [x] random expiring state is bound to authenticated User and Project by digest
+- [x] callback state is one-time-use and replay-resistant
+- [x] expired, invalid, and cross-user state is rejected
+- [x] callback installation ID is not trusted by itself
+- [x] installation is independently verified as belonging to the configured GitHub App
+- [x] ephemeral GitHub App user authorization verifies installation-user association
+
+### Repository authorization and persistence
+
+- [x] authorized repository discovery uses an ephemeral installation token
+- [x] repository pagination is handled with an explicit MVP bound
+- [x] arbitrary repository IDs are rejected
+- [x] repository connection uses stable GitHub numeric IDs
+- [x] repository connection is idempotent
+- [x] ConnectedRepository belongs to exactly one Project in MVP
+- [x] Project and connection ownership are enforced by authenticated identity
+- [x] local disconnect is distinguished from GitHub-side uninstall/revocation
+- [x] no provider token, private key, client secret, or raw GitHub payload is persisted
+
+### Migration and isolation
+
+- [x] `20260915204500_add_github_connection_foundation` migration created
+- [x] GitHubConnection, ConnectedRepository, and GitHubConnectionAttempt models added
+- [x] new tenant-owned tables have RLS enabled
+- [x] authenticated direct writes to GitHub connection tables remain denied
+- [x] tenant-scoped connection reads require User/Project ownership
+- [x] migration applied successfully to the real Supabase development database
+
+### Automated and live verification
+
+- [x] configuration and browser-isolation tests cover GitHub secrets
+- [x] App JWT signing boundary is tested
+- [x] invalid, expired, replayed, and spoofed installation flows are tested
+- [x] repository authorization, idempotency, and cross-user boundaries are tested
+- [x] Task 0.5 authentication and Task 0.6 RLS regressions remain covered
+- [x] real GitHub App was created and its private key verified server-side
+- [x] real authenticated installation flow completed
+- [x] real authorized repository discovery completed through GitHub API
+- [x] real repository connection persisted to the correct Project
+- [x] no GitHub token exposure was confirmed during the real flow
+
+### Live verification record
+
+- [x] a real authenticated user completed the separate selected-repository GitHub App installation and callback
+- [x] the GitHub API returned the installation-authorized private repository and it was connected to the intended Project
+- [x] the App used read-only Metadata, Contents, and Pull requests permissions with no write permission
+- [x] no installation ID, repository ID, callback parameter, token, secret, credential, private key, or private repository name is retained in this record
+
+### Quality gates
+
+- [x] `pnpm lint` passes
+- [x] `pnpm typecheck` passes
+- [x] `pnpm test` passes with Task 0.5 and Task 0.6 regressions
+- [x] `pnpm build` passes
+- [x] `pnpm db:generate` passes
+- [x] `pnpm db:validate` passes
+- [x] `pnpm db:check` passes after migration
+- [x] `pnpm db:migrate:deploy` passes
+- [x] `pnpm db:migrate:status` reports three migrations and an up-to-date schema
+
+### Scope and task status
+
+- [x] GitHub App connection foundation implemented
+- [x] no commit, pull-request, webhook, sync, event, analytics, or AI ingestion implemented
+- [x] Task 0.8 not started
+- [x] Task 0.7 complete
+
 ## Phase 0 Exit Gate
 
 - [x] centralized configuration implemented
@@ -351,5 +433,7 @@ This tracker records verified repository state. Items are checked only after the
 - [ ] deployment and backup/restore procedures are documented
 
 ### Phase Status
+
+**Current status:** IN PROGRESS
 
 - [ ] PHASE 0 COMPLETE

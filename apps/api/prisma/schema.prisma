@@ -9,10 +9,12 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(uuid()) @db.Uuid
-  createdAt DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime  @default(now()) @updatedAt @db.Timestamptz(3)
-  projects  Project[]
+  id                       String                    @id @default(uuid()) @db.Uuid
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                  @default(now()) @updatedAt @db.Timestamptz(3)
+  projects                 Project[]
+  gitHubConnections        GitHubConnection[]
+  gitHubConnectionAttempts GitHubConnectionAttempt[]
 }
 
 model Project {
@@ -22,6 +24,65 @@ model Project {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  connectedRepository      ConnectedRepository?
+  gitHubConnectionAttempts GitHubConnectionAttempt[]
 
   @@index([userId])
+}
+
+enum GitHubConnectionStatus {
+  active
+  disconnected
+  authorization_error
+}
+
+model GitHubConnection {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  userId                 String                 @db.Uuid
+  providerInstallationId BigInt                 @db.BigInt
+  providerAccountId      BigInt                 @db.BigInt
+  accountLogin           String
+  accountType            String
+  status                 GitHubConnectionStatus @default(active)
+  createdAt              DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
+  user                   User                   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  repositories           ConnectedRepository[]
+
+  @@unique([userId, providerInstallationId])
+  @@index([userId])
+}
+
+model ConnectedRepository {
+  id                     String                 @id @default(uuid()) @db.Uuid
+  projectId              String                 @unique @db.Uuid
+  gitHubConnectionId     String                 @db.Uuid
+  providerRepositoryId   BigInt                 @db.BigInt
+  owner                  String
+  name                   String
+  defaultBranch          String
+  isPrivate              Boolean
+  status                 GitHubConnectionStatus @default(active)
+  createdAt              DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
+  project                Project                @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  gitHubConnection       GitHubConnection       @relation(fields: [gitHubConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([gitHubConnectionId, providerRepositoryId])
+  @@index([gitHubConnectionId])
+}
+
+model GitHubConnectionAttempt {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  projectId   String   @db.Uuid
+  stateDigest String   @unique @db.VarChar(64)
+  expiresAt   DateTime @db.Timestamptz(3)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([userId])
+  @@index([projectId])
+  @@index([expiresAt])
 }

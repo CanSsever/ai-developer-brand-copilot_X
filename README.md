@@ -1,6 +1,6 @@
 # AI Developer Brand Copilot
 
-This repository contains the engineering foundation for AI Developer Brand Copilot. It is currently in **Phase 0 — Foundation**. Core ownership persistence, Supabase authentication, and the initial RLS policies are implemented. Live two-user tenant-isolation verification remains incomplete. Product intelligence, GitHub App ingestion, and AI integration are not implemented yet.
+This repository contains the engineering foundation for AI Developer Brand Copilot. It is currently in **Phase 0 — Foundation**. Core ownership persistence, Supabase authentication, tenant RLS, and the GitHub App connection foundation are implemented and live-verified. GitHub activity ingestion, product intelligence, and AI integration are not implemented yet.
 
 ## Prerequisites
 
@@ -91,7 +91,7 @@ The Next.js App Router uses `@supabase/ssr` cookie-backed clients. The session-r
 
 The Nest API accepts only `Authorization: Bearer <access-token>` for protected routes. Supabase verifies the token cryptographically, after which the API also checks issuer, authenticated audience, expiry, and UUID subject. The verified `sub` is the application `User.id`; a Prisma upsert resolves exactly one ownership-root user without storing passwords or provider tokens. `GET /auth/me` returns only that UUID. Request bodies and custom user-ID headers are never identity sources.
 
-Supabase Auth with GitHub is the login provider. It is separate from the future GitHub App installation and repository-ingestion integration.
+Supabase Auth with GitHub is the login provider. It remains separate from GitHub App installation and repository authorization.
 
 ## Manual Supabase Auth setup and verification
 
@@ -125,3 +125,53 @@ Real two-user RLS verification completed successfully on September 13, 2026, usi
 The development-only browser registration route, server action, in-memory token handoff, loopback coordinator, and manual verification command were removed after the successful run. No user IDs, access tokens, refresh tokens, JWTs, cookies, credentials, or provider payloads from the verification are retained in the repository or this record.
 
 Never paste an access token, refresh token, GitHub client secret, or database URL into source files, logs, documentation, commits, or chat.
+
+## GitHub App connection foundation
+
+Supabase GitHub OAuth is used only for application sign-in and session identity. Repository authorization uses a separate GitHub App installation. A successful Supabase sign-in is never treated as repository consent, and its provider OAuth token is never used for repository access.
+
+The authenticated installation flow is:
+
+1. The user chooses a Project they own. The API verifies ownership and creates a random, ten-minute connection state. Only its SHA-256 digest is stored, bound to the authenticated User and Project.
+2. The browser is redirected to the configured GitHub App installation URL with the opaque state. The GitHub App must request user authorization during installation.
+3. The callback requires the same authenticated Supabase user, consumes the state exactly once, and exchanges the one-time GitHub code on the API server.
+4. The API verifies the installation twice: an App JWT request proves the installation belongs to this GitHub App, and the ephemeral GitHub App user token proves the installing user can access that installation. A callback `installation_id` is never trusted by itself.
+5. Only stable installation/account metadata is persisted. The user token is discarded after verification.
+6. Authorized repositories are loaded with an on-demand, short-lived installation access token. The selected numeric repository ID must be present in GitHub's installation-authorized list before it can be connected to the owned Project.
+
+GitHub App JWTs use RS256, an issued-at value adjusted for clock drift, a lifetime below ten minutes, and the configured GitHub App client ID as issuer. Installation access tokens and GitHub App user tokens remain server-side, are not persisted, are not returned through shared contracts, and are not logged. Repository pagination uses pages of 100 and fails closed beyond the explicit 10,000-repository MVP bound.
+
+Persistence contains `GitHubConnection`, `ConnectedRepository`, and short-lived `GitHubConnectionAttempt` records. A User may have multiple installation connections. A Project has at most one connected repository, and a provider repository ID is unique within an installation. All new tables have RLS enabled. Authenticated database clients receive only tenant-scoped read access to safe connection metadata; writes remain server-only and API operations independently enforce User and Project ownership.
+
+Local disconnect deletes the local installation reference and cascades its connected repository records. It does not uninstall or revoke the GitHub App at GitHub; use GitHub's installation settings for provider-side revocation. No background jobs exist in this phase.
+
+### Local GitHub App registration
+
+Create a development GitHub App in **GitHub → Settings → Developer settings → GitHub Apps → New GitHub App** with these settings:
+
+- GitHub App name: a globally unique development name, such as `AI Developer Brand Copilot Local <unique suffix>`
+- Homepage URL: `http://localhost:3000`
+- Callback URL: `http://localhost:3000/github/callback`
+- Callback wildcard matching: disabled
+- Request user authorization (OAuth) during installation: enabled
+- Expire user authorization tokens: enabled
+- Device Flow: disabled
+- Setup URL: unused; GitHub disables it when user authorization during installation is enabled
+- Webhooks: inactive, with no webhook URL or subscribed events
+- Repository permissions: Metadata read-only, Contents read-only, Pull requests read-only
+- Organization and account permissions: none
+- Availability for local development: only the owning account; choose only the repository required for verification during installation
+
+Metadata read access supports repository identity and discovery. Contents read access is reserved for later read-only commit synchronization, and Pull requests read access is reserved for later merged pull-request synchronization required by the PDR. No write permission is requested.
+
+Generate a private key from the GitHub App settings. Store these values only in the ignored `apps/api/.env`: `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY`, and `GITHUB_APP_CALLBACK_URL`. The PEM may be represented with escaped `\\n` line breaks. Never commit the PEM or paste it into chat. None of these values belongs in `NEXT_PUBLIC_*` configuration.
+
+After configuring the App, start the API and web application, sign in through Supabase, open `http://localhost:3000/github/connect`, create or choose a Project, select **Connect GitHub App**, install it on a selected repository, and choose that repository after the verified callback.
+
+### Task 0.7 live verification record
+
+The real GitHub App flow completed successfully on September 16, 2026. An authenticated application user completed the separate selected-repository GitHub App installation, returned through the verified callback, discovered the authorized private repository through the GitHub API, and connected it to the intended Project. The App used read-only Metadata, Contents, and Pull requests permissions with no write permission.
+
+No installation ID, repository ID, callback parameter, access token, installation token, user token, client secret, private key, database credential, or private repository name from the live flow is retained in this record.
+
+Task 0.7 does not implement commit or pull-request ingestion, webhook processing, synchronization jobs, raw GitHub event persistence, `DevelopmentEvent`, analytics, recommendations, or AI/content generation.
