@@ -1,7 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import request from "supertest";
-import { afterEach, beforeEach, describe, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { AppModule } from "./app.module";
 import { DatabaseHealthService } from "./database/database-health.service";
@@ -80,13 +80,18 @@ describe("GET /health/db", () => {
     app = testingModule.createNestApplication();
     await app.init();
 
-    await request(app.getHttpServer())
+    const response = await request(app.getHttpServer())
       .get("/health/db")
-      .expect(503)
-      .expect({
-        statusCode: 503,
-        message: "Database is unavailable",
-        error: "Service Unavailable",
-      });
+      .set("X-Request-Id", "55555555-5555-4555-8555-555555555555")
+      .expect(503);
+
+    expect(response.body).toMatchObject({
+      statusCode: 503,
+      code: "SERVICE_UNAVAILABLE",
+      message: "Database is unavailable",
+      requestId: "55555555-5555-4555-8555-555555555555",
+      path: "/health/db",
+    });
+    expect(response.body.timestamp).toEqual(expect.any(String));
   });
 });

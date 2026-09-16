@@ -4,6 +4,7 @@ import { NestFactory } from "@nestjs/core";
 import { parseApiEnv } from "@developer-brand-copilot/config";
 
 import { AppModule } from "./app.module";
+import { StructuredLogger } from "./observability/structured-logger";
 
 async function bootstrap(): Promise<void> {
   const config = parseApiEnv({
@@ -19,7 +20,9 @@ async function bootstrap(): Promise<void> {
     GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
     GITHUB_APP_CALLBACK_URL: process.env.GITHUB_APP_CALLBACK_URL,
   });
-  const app = await NestFactory.create(AppModule.register(config));
+  const app = await NestFactory.create(AppModule.register(config), {
+    logger: new StructuredLogger(),
+  });
 
   await app.listen(config.PORT);
 }

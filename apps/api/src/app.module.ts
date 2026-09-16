@@ -6,6 +6,7 @@ import { AppController } from "./app.controller";
 import { AuthModule } from "./auth/auth.module";
 import { DatabaseModule } from "./database/database.module";
 import { GitHubModule } from "./github/github.module";
+import { ObservabilityModule } from "./observability/observability.module";
 
 @Module({})
 export class AppModule {
@@ -13,6 +14,7 @@ export class AppModule {
     return {
       module: AppModule,
       imports: [
+        ObservabilityModule,
         DatabaseModule.register(config.DATABASE_URL),
         AuthModule.register({
           url: config.SUPABASE_URL,

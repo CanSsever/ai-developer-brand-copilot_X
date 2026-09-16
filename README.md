@@ -175,3 +175,26 @@ The real GitHub App flow completed successfully on September 16, 2026. An authen
 No installation ID, repository ID, callback parameter, access token, installation token, user token, client secret, private key, database credential, or private repository name from the live flow is retained in this record.
 
 Task 0.7 does not implement commit or pull-request ingestion, webhook processing, synchronization jobs, raw GitHub event persistence, `DevelopmentEvent`, analytics, recommendations, or AI/content generation.
+
+## API observability baseline
+
+Every API request receives a bounded correlation identifier. A caller-provided `X-Request-Id` is reused only when it is a canonical UUID v4; otherwise the API generates a UUID. The identifier is stored in an `AsyncLocalStorage` request context, returned in the `X-Request-Id` response header, included in request logs, and included in API error responses.
+
+API errors use this stable safe shape:
+
+```json
+{
+  "statusCode": 400,
+  "code": "BAD_REQUEST",
+  "message": "Safe validation message",
+  "requestId": "00000000-0000-4000-8000-000000000000",
+  "timestamp": "ISO-8601 timestamp",
+  "path": "/safe/path"
+}
+```
+
+Expected Nest HTTP exceptions preserve their intended status and safe message. Unexpected exceptions become `INTERNAL_SERVER_ERROR` responses with the generic message `Internal server error`; stack traces, raw exception objects, Prisma/SQL details, and upstream provider internals are never returned to the browser.
+
+The API writes newline-delimited JSON logs to standard output or standard error. Request-completion events contain timestamp, level, event, request ID, method, query-free path, status code, and duration. Request/response bodies, query strings, Authorization headers, cookies, OAuth codes, tokens, private keys, client secrets, database credentials, and raw provider payloads are not logged. Central recursive redaction also protects sensitive metadata keys and common bearer-token, GitHub-token, PEM, and credential-bearing PostgreSQL URL representations.
+
+This Phase 0 baseline behaves safely in development and production and does not persist operational logs or add external log shipping, metrics, tracing, or monitoring infrastructure.

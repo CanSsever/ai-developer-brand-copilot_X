@@ -417,8 +417,49 @@ This tracker records verified repository state. Items are checked only after the
 
 - [x] GitHub App connection foundation implemented
 - [x] no commit, pull-request, webhook, sync, event, analytics, or AI ingestion implemented
-- [x] Task 0.8 not started
+- [x] Task 0.8 had not started before Task 0.7 closure
 - [x] Task 0.7 complete
+
+## Task 0.8 — Logging, Error Handling & Observability
+
+### Request correlation
+
+- [x] every API request receives a request ID
+- [x] valid UUID v4 `X-Request-Id` values may be reused and all other values are replaced
+- [x] request context uses `AsyncLocalStorage` without cross-request global state
+- [x] `X-Request-Id` is returned in response headers and safe error bodies
+
+### Structured logging and redaction
+
+- [x] the API uses one newline-delimited JSON logging implementation
+- [x] request-completion logs contain request ID, method, sanitized path, status, and duration
+- [x] query strings, headers, cookies, and request/response bodies are not logged
+- [x] centralized recursive redaction covers auth, cookie, token, OAuth code, secret, private-key, password, Supabase-key, and database-URL fields
+- [x] common bearer-token, GitHub-token, PEM, and credential-bearing PostgreSQL URL representations are sanitized
+- [x] unexpected errors log safe diagnostic classification without raw messages, stacks, or provider/database payloads
+
+### Error contract and exception handling
+
+- [x] shared stable `ApiErrorResponse` contract implemented
+- [x] expected HTTP status and safe message behavior is preserved
+- [x] unexpected exceptions become safe HTTP 500 responses
+- [x] stack traces, Prisma/SQL internals, provider internals, and raw exceptions are not returned
+- [x] authentication, ownership, GitHub provider, conflict, not-found, and database-health behavior remains compatible
+
+### Verification and scope
+
+- [x] request correlation, safe error, lifecycle logging, and recursive redaction tests pass
+- [x] Task 0.1–0.7 regression tests pass
+- [x] `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass
+- [x] `pnpm db:generate`, `pnpm db:validate`, and `pnpm db:check` pass
+- [x] live `GET /health` and `GET /health/db` return HTTP 200 with request correlation enabled
+- [x] no database migration or persisted operational-log store was introduced
+- [x] no external log shipping, metrics, tracing platform, CI work, webhook, synchronization, or Phase 1 functionality was introduced
+
+### Task Status
+
+- [x] Task 0.9 not started
+- [x] Task 0.8 complete
 
 ## Phase 0 Exit Gate
 
@@ -429,7 +470,7 @@ This tracker records verified repository state. Items are checked only after the
 - [x] cross-user isolation integration tests pass
 - [ ] CI enforces required quality gates
 - [ ] secret handling and secret scanning are verified
-- [ ] structured errors, correlation IDs, health checks, and log redaction are verified
+- [x] structured errors, correlation IDs, health checks, and log redaction are verified
 - [ ] deployment and backup/restore procedures are documented
 
 ### Phase Status
