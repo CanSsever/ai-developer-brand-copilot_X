@@ -458,8 +458,50 @@ This tracker records verified repository state. Items are checked only after the
 
 ### Task Status
 
-- [x] Task 0.9 not started
+- [x] Task 0.9 had not started before Task 0.8 closure
 - [x] Task 0.8 complete
+
+## Task 0.9 — CI Quality Gates & Secret Scanning
+
+### Workflow implementation
+
+- [x] GitHub Actions workflow runs on pull requests and pushes to `main`
+- [x] obsolete runs for the same pull request or branch are cancelled
+- [x] workflow permissions are limited to `contents: read`
+- [x] checkout credentials are not persisted
+- [x] official checkout and Node setup actions are pinned to immutable commits
+- [x] `pull_request_target`, write permissions, deployment behavior, and privileged containers are absent
+
+### Deterministic quality gates
+
+- [x] Node.js `22.13.0` and pnpm `11.22.0` are pinned in CI
+- [x] frozen-lockfile installation is enforced
+- [x] Prisma generation and validation use synthetic CI-only database URLs
+- [x] lint, typecheck, tests, and builds are required workflow steps
+- [x] normal CI does not connect to Supabase, run migrations, or require repository secrets
+
+### Secret scanning
+
+- [x] Gitleaks `8.30.0` scans full history and current trackable files with redacted output
+- [x] Linux and Windows release archives have pinned SHA-256 checksums
+- [x] no external SaaS, paid account, or broad allowlist is required
+- [x] `pnpm security:secrets` reproduces the scanner locally
+- [x] local full-history scan completed with no findings
+
+### Local and static verification
+
+- [x] workflow passed checksum-verified actionlint syntax and semantic validation
+- [x] action references, triggers, permissions, concurrency, and commands were statically audited
+- [x] `pnpm install --frozen-lockfile` passes
+- [x] `pnpm db:generate` and `pnpm db:validate` pass with synthetic values
+- [x] `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass with synthetic values
+- [ ] hosted GitHub Actions quality-gates job observed passing
+- [ ] hosted GitHub Actions secret-scan job observed passing
+
+### Task Status
+
+- [x] Task 0.10 not started
+- [ ] Task 0.9 complete
 
 ## Phase 0 Exit Gate
 
@@ -469,7 +511,7 @@ This tracker records verified repository state. Items are checked only after the
 - [x] baseline ownership migration and RLS policies exist
 - [x] cross-user isolation integration tests pass
 - [ ] CI enforces required quality gates
-- [ ] secret handling and secret scanning are verified
+- [x] secret handling and secret scanning are verified
 - [x] structured errors, correlation IDs, health checks, and log redaction are verified
 - [ ] deployment and backup/restore procedures are documented
 

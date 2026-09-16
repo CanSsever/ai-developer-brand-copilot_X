@@ -13,6 +13,7 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "pnpm -r --if-present --fail-if-no-match test",
+    "security:secrets": "node scripts/run-gitleaks.mjs",
     "db:generate": "pnpm --filter @developer-brand-copilot/api db:generate",
     "db:validate": "pnpm --filter @developer-brand-copilot/api db:validate",
     "db:format": "pnpm --filter @developer-brand-copilot/api db:format",

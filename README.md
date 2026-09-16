@@ -198,3 +198,31 @@ Expected Nest HTTP exceptions preserve their intended status and safe message. U
 The API writes newline-delimited JSON logs to standard output or standard error. Request-completion events contain timestamp, level, event, request ID, method, query-free path, status code, and duration. Request/response bodies, query strings, Authorization headers, cookies, OAuth codes, tokens, private keys, client secrets, database credentials, and raw provider payloads are not logged. Central recursive redaction also protects sensitive metadata keys and common bearer-token, GitHub-token, PEM, and credential-bearing PostgreSQL URL representations.
 
 This Phase 0 baseline behaves safely in development and production and does not persist operational logs or add external log shipping, metrics, tracing, or monitoring infrastructure.
+
+## Continuous integration and secret scanning
+
+The GitHub Actions workflow in `.github/workflows/ci.yml` is configured for pull requests and pushes to `main`. It uses read-only repository permissions, cancels obsolete runs for the same pull request or branch, disables persisted checkout credentials, and does not use `pull_request_target`, deployment permissions, privileged containers, or repository secrets.
+
+The quality-gates job pins Node.js `22.13.0` and activates the repository-declared pnpm `11.22.0`. It runs:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm db:generate
+pnpm db:validate
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+Prisma and frontend build-time validation receive synthetic CI-only values. Normal CI never copies local environment files, connects to the real Supabase database, runs migrations, or receives GitHub App/Supabase production credentials.
+
+The separate secret-scan job fetches full Git history and runs Gitleaks `8.30.0`. The official release archive is selected per supported platform and must match its pinned SHA-256 checksum before execution. It scans both Git history and the current tracked/untracked-but-not-ignored file set; ignored local environment files are excluded. Findings are redacted and fail the job. Repository contents are not uploaded to an external scanning service, and no broad allowlist is configured.
+
+Run the same history scan locally with:
+
+```bash
+pnpm security:secrets
+```
+
+The command requires network access to download the checksum-pinned Gitleaks binary into an operating-system temporary directory. The binary and archive are removed after the scan. Hosted GitHub Actions execution remains to be observed after this repository is pushed to a GitHub remote.
