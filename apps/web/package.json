@@ -3,14 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "predev": "pnpm --filter @developer-brand-copilot/config build",
+    "predev": "pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
     "dev": "next dev --port 3000",
-    "prebuild": "pnpm --filter @developer-brand-copilot/config build",
+    "prebuild": "pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
     "build": "next build",
     "start": "next start --port 3000",
-    "pretypecheck": "pnpm --filter @developer-brand-copilot/config build",
+    "pretypecheck": "pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
     "typecheck": "tsc --noEmit",
-    "pretest": "pnpm --filter @developer-brand-copilot/config build",
+    "pretest": "pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
     "test": "vitest run"
   },
   "dependencies": {
