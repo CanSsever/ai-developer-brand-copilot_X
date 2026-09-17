@@ -203,7 +203,7 @@ This Phase 0 baseline behaves safely in development and production and does not 
 
 The GitHub Actions workflow in `.github/workflows/ci.yml` is configured for pull requests and pushes to `main`. It uses read-only repository permissions, cancels obsolete runs for the same pull request or branch, disables persisted checkout credentials, and does not use `pull_request_target`, deployment permissions, privileged containers, or repository secrets.
 
-The quality-gates job pins Node.js `22.13.0` and activates the repository-declared pnpm `11.22.0`. It runs:
+The quality-gates job pins Node.js `22.13.0`, installs the Node-compatible Corepack `0.34.5`, and activates the repository-declared pnpm `11.22.0` with integrity verification enabled. It runs:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -225,4 +225,4 @@ Run the same history scan locally with:
 pnpm security:secrets
 ```
 
-The command requires network access to download the checksum-pinned Gitleaks binary into an operating-system temporary directory. The binary and archive are removed after the scan. Hosted GitHub Actions execution remains to be observed after this repository is pushed to a GitHub remote.
+The command requires network access to download the checksum-pinned Gitleaks binary into an operating-system temporary directory. The binary and archive are removed after the scan. Hosted GitHub Actions verification completed successfully for commit `907e7ff`: both `quality-gates` and `secret-scan` passed on a clean GitHub-hosted runner.

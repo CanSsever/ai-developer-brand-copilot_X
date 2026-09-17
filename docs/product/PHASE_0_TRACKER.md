@@ -495,13 +495,19 @@ This tracker records verified repository state. Items are checked only after the
 - [x] `pnpm install --frozen-lockfile` passes
 - [x] `pnpm db:generate` and `pnpm db:validate` pass with synthetic values
 - [x] `pnpm lint`, `pnpm typecheck`, `pnpm test`, and `pnpm build` pass with synthetic values
-- [ ] hosted GitHub Actions quality-gates job observed passing
-- [ ] hosted GitHub Actions secret-scan job observed passing
+- [x] hosted GitHub Actions quality-gates job observed passing — VERIFIED
+- [x] hosted GitHub Actions secret-scan job observed passing — VERIFIED
+
+### Hosted verification record
+
+- [x] commit `907e7ff` completed the full GitHub Actions workflow successfully on a clean hosted runner
+- [x] `quality-gates` passed after the pinned Corepack bootstrap and explicit web workspace dependency fix
+- [x] `secret-scan` passed without disabling integrity checks or introducing secret exceptions
 
 ### Task Status
 
-- [x] Task 0.10 not started
-- [ ] Task 0.9 complete
+- [x] Task 0.10 NOT STARTED
+- [x] Task 0.9 VERIFIED COMPLETE
 
 ## Phase 0 Exit Gate
 
@@ -510,8 +516,8 @@ This tracker records verified repository state. Items are checked only after the
 - [x] authenticated web and API shells run in the documented environment
 - [x] baseline ownership migration and RLS policies exist
 - [x] cross-user isolation integration tests pass
-- [ ] CI enforces required quality gates
-- [x] secret handling and secret scanning are verified
+- [x] CI enforces required quality gates — VERIFIED
+- [x] secret handling and secret scanning are verified — VERIFIED
 - [x] structured errors, correlation IDs, health checks, and log redaction are verified
 - [ ] deployment and backup/restore procedures are documented
 
