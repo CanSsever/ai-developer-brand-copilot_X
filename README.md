@@ -1,6 +1,6 @@
 # AI Developer Brand Copilot
 
-This repository contains the verified Phase 0 engineering foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, the GitHub App connection foundation, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 1 has not started; GitHub activity ingestion, product intelligence, and AI integration are not implemented yet.
+This repository contains the verified Phase 0 engineering foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, the GitHub App connection foundation, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 1 is in progress: the raw commit and synchronization-run persistence foundation exists, but GitHub activity fetching and synchronization are not implemented yet. Product intelligence and AI integration remain outside the current phase.
 
 ## Prerequisites
 
@@ -177,6 +177,21 @@ The real GitHub App flow completed successfully on September 16, 2026. An authen
 No installation ID, repository ID, callback parameter, access token, installation token, user token, client secret, private key, database credential, or private repository name from the live flow is retained in this record.
 
 Task 0.7 does not implement commit or pull-request ingestion, webhook processing, synchronization jobs, raw GitHub event persistence, `DevelopmentEvent`, analytics, recommendations, or AI/content generation.
+
+## Raw GitHub ingestion persistence foundation
+
+Phase 1 Task 1.1 adds normalized, tenant-owned storage beneath each `ConnectedRepository`:
+
+- `GitHubCommit` stores commit identity, message, safe author labels, provider timestamps, parent SHAs, aggregate change statistics, and optional orphaning time.
+- `GitHubCommitFile` stores changed paths, change status, and numeric statistics. It never stores file contents or patches.
+- `SyncRun` stores a constrained synchronization lifecycle, time-window boundary, cursor-algorithm version, SHA-256 idempotency key, safe counters, and an optional safe failure code.
+- `ConnectedRepository.lastSuccessfulSyncAt` is the durable successful time boundary for the later incremental synchronization service.
+
+Commit identity is unique by connected repository and SHA, so an overlapping fetch can be idempotent while the same Git object remains valid in multiple repositories. Only one queued or running synchronization may exist per connected repository. Deleting a local connected repository cascades to its raw commits, changed-file metadata, and synchronization history, matching the existing local-disconnect behavior and preventing orphaned provider data.
+
+All three ingestion tables have RLS enabled. Authenticated database clients can select only rows that resolve through both the owned Project and GitHub connection; direct client writes are not granted. Application and future worker writes remain server-only and must retain API ownership checks.
+
+This persistence layer does not fetch GitHub commits, start manual or background synchronization, ingest pull requests, expose repository evidence through an API, or implement `DevelopmentEvent`/AI behavior.
 
 ## API observability baseline
 

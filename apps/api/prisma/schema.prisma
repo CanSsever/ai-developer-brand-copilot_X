@@ -18,12 +18,12 @@ model User {
 }
 
 model Project {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  timezone  String
-  createdAt DateTime @default(now()) @db.Timestamptz(3)
-  updatedAt DateTime @default(now()) @updatedAt @db.Timestamptz(3)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id                       String                    @id @default(uuid()) @db.Uuid
+  userId                   String                    @db.Uuid
+  timezone                 String
+  createdAt                DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                  @default(now()) @updatedAt @db.Timestamptz(3)
+  user                     User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   connectedRepository      ConnectedRepository?
   gitHubConnectionAttempts GitHubConnectionAttempt[]
 
@@ -34,6 +34,15 @@ enum GitHubConnectionStatus {
   active
   disconnected
   authorization_error
+}
+
+enum SyncRunStatus {
+  queued
+  running
+  succeeded
+  failed_retryable
+  failed_terminal
+  cancelled
 }
 
 model GitHubConnection {
@@ -54,22 +63,87 @@ model GitHubConnection {
 }
 
 model ConnectedRepository {
-  id                     String                 @id @default(uuid()) @db.Uuid
-  projectId              String                 @unique @db.Uuid
-  gitHubConnectionId     String                 @db.Uuid
-  providerRepositoryId   BigInt                 @db.BigInt
-  owner                  String
-  name                   String
-  defaultBranch          String
-  isPrivate              Boolean
-  status                 GitHubConnectionStatus @default(active)
-  createdAt              DateTime               @default(now()) @db.Timestamptz(3)
-  updatedAt              DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
-  project                Project                @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  gitHubConnection       GitHubConnection       @relation(fields: [gitHubConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id                   String                 @id @default(uuid()) @db.Uuid
+  projectId            String                 @unique @db.Uuid
+  gitHubConnectionId   String                 @db.Uuid
+  providerRepositoryId BigInt                 @db.BigInt
+  owner                String
+  name                 String
+  defaultBranch        String
+  isPrivate            Boolean
+  status               GitHubConnectionStatus @default(active)
+  lastSuccessfulSyncAt DateTime?              @db.Timestamptz(3)
+  createdAt            DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt            DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
+  project              Project                @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  gitHubConnection     GitHubConnection       @relation(fields: [gitHubConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  commits              GitHubCommit[]
+  syncRuns             SyncRun[]
 
   @@unique([gitHubConnectionId, providerRepositoryId])
   @@index([gitHubConnectionId])
+}
+
+model GitHubCommit {
+  id                    String              @id @default(uuid()) @db.Uuid
+  connectedRepositoryId String              @db.Uuid
+  sha                   String              @db.VarChar(64)
+  message               String
+  authorName            String?             @db.VarChar(255)
+  authorLogin           String?             @db.VarChar(255)
+  authoredAt            DateTime            @db.Timestamptz(3)
+  committedAt           DateTime            @db.Timestamptz(3)
+  parentShas            String[]            @default([])
+  additions             Int?
+  deletions             Int?
+  changedFiles          Int?
+  orphanedAt            DateTime?           @db.Timestamptz(3)
+  createdAt             DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime            @default(now()) @updatedAt @db.Timestamptz(3)
+  connectedRepository   ConnectedRepository @relation(fields: [connectedRepositoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  files                 GitHubCommitFile[]
+
+  @@unique([connectedRepositoryId, sha])
+  @@index([connectedRepositoryId, committedAt])
+}
+
+model GitHubCommitFile {
+  id             String       @id @default(uuid()) @db.Uuid
+  gitHubCommitId String       @db.Uuid
+  path           String
+  previousPath   String?
+  status         String       @db.VarChar(32)
+  additions      Int
+  deletions      Int
+  changes        Int
+  createdAt      DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt      DateTime     @default(now()) @updatedAt @db.Timestamptz(3)
+  gitHubCommit   GitHubCommit @relation(fields: [gitHubCommitId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([gitHubCommitId, path])
+  @@index([gitHubCommitId])
+}
+
+model SyncRun {
+  id                    String              @id @default(uuid()) @db.Uuid
+  connectedRepositoryId String              @db.Uuid
+  status                SyncRunStatus       @default(queued)
+  idempotencyKey        String              @db.VarChar(64)
+  cursorVersion         Int                 @default(1)
+  windowStart           DateTime            @db.Timestamptz(3)
+  windowEnd             DateTime            @db.Timestamptz(3)
+  startedAt             DateTime?           @db.Timestamptz(3)
+  finishedAt            DateTime?           @db.Timestamptz(3)
+  commitsDiscovered     Int                 @default(0)
+  commitsInserted       Int                 @default(0)
+  failureCode           String?             @db.VarChar(64)
+  createdAt             DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime            @default(now()) @updatedAt @db.Timestamptz(3)
+  connectedRepository   ConnectedRepository @relation(fields: [connectedRepositoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([connectedRepositoryId, idempotencyKey])
+  @@index([connectedRepositoryId, createdAt])
+  @@index([connectedRepositoryId, status])
 }
 
 model GitHubConnectionAttempt {
