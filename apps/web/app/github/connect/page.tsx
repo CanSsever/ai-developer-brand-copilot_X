@@ -14,6 +14,7 @@ import {
   disconnectGitHubConnection,
   startGitHubConnection,
 } from "../actions";
+import { connectionErrorMessage, connectionStatusMessage } from "../feedback";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,8 @@ export default async function GitHubConnectPage({ searchParams }: PageProps) {
   const query = await searchParams;
   const projectId = first(query.projectId);
   const connectionId = first(query.connectionId);
+  const statusMessage = connectionStatusMessage(first(query.status));
+  const errorMessage = connectionErrorMessage(first(query.error));
   let projects: readonly ProjectSummary[] = [];
   let connections: readonly GitHubConnectionSummary[] = [];
   let repositories: readonly AuthorizedRepositorySummary[] = [];
@@ -60,14 +63,14 @@ export default async function GitHubConnectPage({ searchParams }: PageProps) {
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 p-8">
       <header>
-        <Link href="/">← Home</Link>
+        <Link href="/dashboard">← Dashboard</Link>
         <h1 className="mt-4 text-3xl font-semibold">GitHub App connection</h1>
         <p>Repository authorization is separate from GitHub sign-in.</p>
       </header>
 
       {loadFailed ? <p role="alert">Connection data could not be loaded.</p> : null}
-      {first(query.status) ? <p role="status">{first(query.status)}</p> : null}
-      {first(query.error) ? <p role="alert">{first(query.error)}</p> : null}
+      {statusMessage ? <p role="status">{statusMessage}</p> : null}
+      {errorMessage ? <p role="alert">{errorMessage}</p> : null}
 
       <section aria-labelledby="projects-heading">
         <h2 id="projects-heading" className="text-xl font-semibold">Projects</h2>
@@ -89,6 +92,9 @@ export default async function GitHubConnectPage({ searchParams }: PageProps) {
             </li>
           ))}
         </ul>
+        {!loadFailed && projects.length === 0 ? (
+          <p className="mt-4">No Projects are available yet.</p>
+        ) : null}
       </section>
 
       <section aria-labelledby="connections-heading">
@@ -104,6 +110,9 @@ export default async function GitHubConnectPage({ searchParams }: PageProps) {
             </li>
           ))}
         </ul>
+        {!loadFailed && connections.length === 0 ? (
+          <p className="mt-4">No GitHub App installation is connected.</p>
+        ) : null}
         <p>Local disconnect does not uninstall or revoke the GitHub App at GitHub.</p>
       </section>
 
@@ -125,6 +134,9 @@ export default async function GitHubConnectPage({ searchParams }: PageProps) {
               </li>
             ))}
           </ul>
+          {!loadFailed && repositories.length === 0 ? (
+            <p className="mt-4">No authorized repositories are available.</p>
+          ) : null}
         </section>
       ) : null}
     </main>

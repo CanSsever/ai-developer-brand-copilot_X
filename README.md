@@ -45,6 +45,8 @@ pnpm dev
 
 The web application uses `http://localhost:3000`. The API uses `http://localhost:3001`, with `GET /health` for application health, `GET /health/db` for PostgreSQL connectivity, and bearer-protected `GET /auth/me` for the current application user.
 
+Authenticated users can open `/dashboard` for the Phase 0 product shell. The server-rendered dashboard lists owned Projects, creates Projects with an IANA timezone, shows the current Project, represents GitHub App and connected-repository state, links to the existing GitHub connection flow, and provides sign-out. Unauthenticated requests are redirected to the existing sign-in shell. GitHub activity synchronization and product intelligence are not implemented in Phase 0.
+
 Run an application individually:
 
 ```bash
@@ -214,6 +216,15 @@ pnpm typecheck
 pnpm test
 pnpm build
 ```
+
+Run the deterministic foundation browser suite with:
+
+```bash
+pnpm test:e2e:install
+pnpm test:e2e
+```
+
+The installation command uses Playwright's supported Chromium installer. The E2E suite starts isolated local Supabase-auth protocol and API fixtures on ports `4100` and `4101`, plus the web application on port `3100`. It exercises the real application session/cookie and server-side bearer-request architecture without real Supabase, GitHub, database, or production credentials and without a production authentication bypass.
 
 Prisma and frontend build-time validation receive synthetic CI-only values. Normal CI never copies local environment files, connects to the real Supabase database, runs migrations, or receives GitHub App/Supabase production credentials.
 

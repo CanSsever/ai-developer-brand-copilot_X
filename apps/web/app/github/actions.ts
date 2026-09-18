@@ -15,16 +15,21 @@ function formText(formData: FormData, name: string): string {
 }
 
 export async function createProject(formData: FormData): Promise<never> {
+  const destination =
+    formText(formData, "returnTo") === "/dashboard"
+      ? "/dashboard"
+      : "/github/connect";
+
   try {
     await authenticatedApiRequest<ProjectSummary>("/projects", {
       method: "POST",
       body: JSON.stringify({ timezone: formText(formData, "timezone") }),
     });
   } catch {
-    redirect("/github/connect?error=project_creation_failed");
+    redirect(`${destination}?error=project_creation_failed`);
   }
 
-  redirect("/github/connect?status=project_created");
+  redirect(`${destination}?status=project_created`);
 }
 
 export async function startGitHubConnection(formData: FormData): Promise<never> {

@@ -65,6 +65,59 @@ function harness() {
 }
 
 describe("GitHubConnectionService", () => {
+  it("lists only the authenticated user's Projects with safe repository state", async () => {
+    const { prisma, service } = harness();
+    prisma.project.findMany.mockResolvedValue([
+      {
+        id: projectId,
+        timezone: "Europe/Berlin",
+        connectedRepository: {
+          gitHubConnectionId: connectionId,
+          owner: "safe-owner",
+          name: "safe-repository",
+          defaultBranch: "main",
+          isPrivate: true,
+          status: "active",
+        },
+      },
+    ]);
+
+    await expect(service.listProjects(userId)).resolves.toEqual([
+      {
+        id: projectId,
+        timezone: "Europe/Berlin",
+        connectedRepository: {
+          connectionId,
+          defaultBranch: "main",
+          fullName: "safe-owner/safe-repository",
+          isPrivate: true,
+          status: "active",
+        },
+      },
+    ]);
+    expect(prisma.project.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { userId } })
+    );
+  });
+
+  it("creates a Project for the authenticated user with no repository", async () => {
+    const { prisma, service } = harness();
+    prisma.project.create.mockResolvedValue({
+      id: projectId,
+      timezone: "Etc/UTC",
+    });
+
+    await expect(service.createProject(userId, "Etc/UTC")).resolves.toEqual({
+      id: projectId,
+      timezone: "Etc/UTC",
+      connectedRepository: null,
+    });
+    expect(prisma.project.create).toHaveBeenCalledWith({
+      data: { userId, timezone: "Etc/UTC" },
+      select: { id: true, timezone: true },
+    });
+  });
+
   it("binds an opaque state digest to the authenticated user and owned Project", async () => {
     const { prisma, service } = harness();
     const result = await service.start(userId, projectId);

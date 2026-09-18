@@ -5,13 +5,16 @@
   "scripts": {
     "predev": "pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
     "dev": "next dev --port 3000",
+    "predev:e2e": "pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
+    "dev:e2e": "next dev --port 3100",
     "prebuild": "pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
     "build": "next build",
     "start": "next start --port 3000",
     "pretypecheck": "pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
     "typecheck": "tsc --noEmit",
     "pretest": "pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@developer-brand-copilot/config": "workspace:*",
@@ -23,6 +26,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.9.1",

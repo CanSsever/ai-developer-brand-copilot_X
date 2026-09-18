@@ -506,8 +506,59 @@ This tracker records verified repository state. Items are checked only after the
 
 ### Task Status
 
-- [x] Task 0.10 NOT STARTED
+- [x] Task 0.10 had not started before Task 0.9 closure
 - [x] Task 0.9 VERIFIED COMPLETE
+
+## Task 0.10 — Authenticated Dashboard Shell & Foundation E2E
+
+### Authenticated product shell
+
+- [x] protected `/dashboard` App Router route implemented with the existing Supabase SSR session architecture
+- [x] unauthenticated dashboard requests redirect to the existing sign-in shell
+- [x] authenticated session state, navigation, and sign-out are available
+- [x] owned Projects are listed with timezone and current-Project selection
+- [x] Project creation reuses the existing authenticated API boundary
+- [x] no-Project, no-GitHub-connection, installed-without-repository, connected-repository, loading, and safe API-failure states are represented
+- [x] existing GitHub App connection management is linked without duplicating authorization logic
+- [x] internal callback status and error codes are mapped to safe human-readable feedback
+- [x] semantic navigation, labels, forms, status/alert roles, and responsive wrapping provide the Phase 0 accessibility baseline
+
+### Ownership-safe API contract
+
+- [x] existing authenticated `GET /projects` response includes a safe connected-repository summary
+- [x] Project listing remains scoped by the verified authenticated User ID
+- [x] browser-supplied Project and connection IDs continue to be ownership-checked server-side
+- [x] focused service tests cover scoped Project listing and authenticated Project creation
+- [x] no new endpoint, schema change, migration, auth mechanism, or RLS change was introduced
+
+### Foundation E2E
+
+- [x] Playwright `1.63.0` and deterministic Chromium configuration added
+- [x] E2E fixtures emulate Supabase OAuth/PKCE protocol and authenticated API responses without production credentials or auth bypasses
+- [x] unauthenticated dashboard protection passes
+- [x] authenticated dashboard and empty-Project state pass
+- [x] Project creation and post-creation rendering pass
+- [x] installed GitHub App and repository-selection state pass
+- [x] existing GitHub management flow is reachable
+- [x] connected private-repository state passes
+- [x] safe API-failure rendering passes
+- [x] all 7 Playwright scenarios pass locally
+- [x] Playwright reports, screenshots, videos, traces, and test results are ignored
+
+### Quality, security, and scope
+
+- [x] `pnpm lint` passes
+- [x] `pnpm typecheck` passes
+- [x] `pnpm test` passes with 86 unit/integration tests across 21 files
+- [x] `pnpm build` passes
+- [x] `pnpm test:e2e` passes with 7 browser tests
+- [x] no real token, credential, private key, provider payload, or database connection is used by automated tests
+- [x] existing CI and secret-scan workflow is unchanged
+- [x] Phase 1 ingestion, polling, webhooks, DevelopmentEvents, AI, recommendations, drafts, and publishing were not started
+
+### Task Status
+
+- [x] Task 0.10 VERIFIED COMPLETE
 
 ## Phase 0 Exit Gate
 

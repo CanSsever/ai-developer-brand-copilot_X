@@ -21,7 +21,12 @@ export default async function HomePage() {
         signInAction={signInWithGithub}
         signOutAction={signOut}
       />
-      {userId ? <Link href="/github/connect">Manage GitHub App connection</Link> : null}
+      {userId ? (
+        <nav aria-label="Product navigation" className="flex gap-4">
+          <Link href="/dashboard">Open dashboard</Link>
+          <Link href="/github/connect">Manage GitHub App connection</Link>
+        </nav>
+      ) : null}
     </main>
   );
 }

@@ -66,11 +66,38 @@ export class GitHubConnectionService {
   ) {}
 
   async listProjects(userId: string): Promise<readonly ProjectSummary[]> {
-    return this.prisma.project.findMany({
+    const projects = await this.prisma.project.findMany({
       where: { userId },
       orderBy: { createdAt: "asc" },
-      select: { id: true, timezone: true },
+      select: {
+        id: true,
+        timezone: true,
+        connectedRepository: {
+          select: {
+            gitHubConnectionId: true,
+            owner: true,
+            name: true,
+            defaultBranch: true,
+            isPrivate: true,
+            status: true,
+          },
+        },
+      },
     });
+
+    return projects.map((project) => ({
+      id: project.id,
+      timezone: project.timezone,
+      connectedRepository: project.connectedRepository
+        ? {
+            connectionId: project.connectedRepository.gitHubConnectionId,
+            defaultBranch: project.connectedRepository.defaultBranch,
+            fullName: `${project.connectedRepository.owner}/${project.connectedRepository.name}`,
+            isPrivate: project.connectedRepository.isPrivate,
+            status: project.connectedRepository.status,
+          }
+        : null,
+    }));
   }
 
   async createProject(userId: string, timezoneValue: unknown): Promise<ProjectSummary> {
@@ -81,10 +108,12 @@ export class GitHubConnectionService {
       throw new BadRequestException("timezone is invalid");
     }
 
-    return this.prisma.project.create({
+    const project = await this.prisma.project.create({
       data: { userId, timezone },
       select: { id: true, timezone: true },
     });
+
+    return { ...project, connectedRepository: null };
   }
 
   async start(

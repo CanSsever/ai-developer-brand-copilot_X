@@ -6,6 +6,15 @@ export type GitHubConnectionStatus =
 export interface ProjectSummary {
   readonly id: string;
   readonly timezone: string;
+  readonly connectedRepository: ProjectConnectedRepositorySummary | null;
+}
+
+export interface ProjectConnectedRepositorySummary {
+  readonly connectionId: string;
+  readonly defaultBranch: string;
+  readonly fullName: string;
+  readonly isPrivate: boolean;
+  readonly status: GitHubConnectionStatus;
 }
 
 export interface CreateProjectRequest {

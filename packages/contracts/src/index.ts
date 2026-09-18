@@ -13,5 +13,6 @@ export type {
   GitHubConnectionStartResponse,
   GitHubConnectionStatus,
   GitHubConnectionSummary,
+  ProjectConnectedRepositorySummary,
   ProjectSummary,
 } from "./github-connection.js";
