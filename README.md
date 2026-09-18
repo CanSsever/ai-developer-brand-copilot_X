@@ -1,6 +1,6 @@
 # AI Developer Brand Copilot
 
-This repository contains the engineering foundation for AI Developer Brand Copilot. It is currently in **Phase 0 — Foundation**. Core ownership persistence, Supabase authentication, tenant RLS, and the GitHub App connection foundation are implemented and live-verified. GitHub activity ingestion, product intelligence, and AI integration are not implemented yet.
+This repository contains the verified Phase 0 engineering foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, the GitHub App connection foundation, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 1 has not started; GitHub activity ingestion, product intelligence, and AI integration are not implemented yet.
 
 ## Prerequisites
 
@@ -200,6 +200,13 @@ Expected Nest HTTP exceptions preserve their intended status and safe message. U
 The API writes newline-delimited JSON logs to standard output or standard error. Request-completion events contain timestamp, level, event, request ID, method, query-free path, status code, and duration. Request/response bodies, query strings, Authorization headers, cookies, OAuth codes, tokens, private keys, client secrets, database credentials, and raw provider payloads are not logged. Central recursive redaction also protects sensitive metadata keys and common bearer-token, GitHub-token, PEM, and credential-bearing PostgreSQL URL representations.
 
 This Phase 0 baseline behaves safely in development and production and does not persist operational logs or add external log shipping, metrics, tracing, or monitoring infrastructure.
+
+## Operations
+
+- [Deployment environments and release procedure](docs/operations/DEPLOYMENT.md)
+- [Database backup and restore runbook](docs/operations/BACKUP_RESTORE.md)
+
+These runbooks document the Phase 0 deployment and recovery contract. They do not claim that production infrastructure has been deployed or that a production backup/restore has been executed. A recorded non-production restore rehearsal remains required before MVP release.
 
 ## Continuous integration and secret scanning
 

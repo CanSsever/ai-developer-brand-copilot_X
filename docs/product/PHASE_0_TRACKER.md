@@ -560,6 +560,29 @@ This tracker records verified repository state. Items are checked only after the
 
 - [x] Task 0.10 VERIFIED COMPLETE
 
+## Final Phase 0 Audit
+
+- [x] Task 0.1 VERIFIED COMPLETE
+- [x] Task 0.2 VERIFIED COMPLETE
+- [x] Task 0.3 VERIFIED COMPLETE
+- [x] Task 0.4 VERIFIED COMPLETE
+- [x] Task 0.5 VERIFIED COMPLETE
+- [x] Task 0.6 VERIFIED COMPLETE
+- [x] Task 0.7 VERIFIED COMPLETE
+- [x] Task 0.8 VERIFIED COMPLETE
+- [x] Task 0.9 VERIFIED COMPLETE
+- [x] Task 0.10 VERIFIED COMPLETE
+- [x] hosted GitHub Actions quality gates verified
+- [x] hosted Gitleaks secret scan verified
+- [x] Supabase Auth and protected API identity flow verified
+- [x] RLS and real two-user tenant isolation verified
+- [x] GitHub App installation and selected-repository connection verified
+- [x] structured errors, correlation IDs, health checks, and log redaction verified
+- [x] authenticated dashboard and deterministic foundation E2E verified
+- [x] deployment environments and controlled release procedure documented in `docs/operations/DEPLOYMENT.md`
+- [x] database backup and restore procedure documented in `docs/operations/BACKUP_RESTORE.md`
+- [x] no unresolved Phase 0 blocker remains
+
 ## Phase 0 Exit Gate
 
 - [x] centralized configuration implemented
@@ -570,10 +593,22 @@ This tracker records verified repository state. Items are checked only after the
 - [x] CI enforces required quality gates — VERIFIED
 - [x] secret handling and secret scanning are verified — VERIFIED
 - [x] structured errors, correlation IDs, health checks, and log redaction are verified
-- [ ] deployment and backup/restore procedures are documented
+- [x] deployment environments and deployment procedure are documented — VERIFIED
+- [x] backup and restore procedure is documented — VERIFIED
+- [x] Phase 0 documentation closure does not claim a production deployment, production backup, or restore execution
+
+### Future MVP Operational Verification (not a Phase 0 blocker)
+
+- [ ] enable and verify the approved production managed-backup/PITR plan before accepting production user data
+- [ ] execute and record a non-production restore rehearsal before MVP release, as required by the PDR non-functional and Phase 5 release gates
+- [ ] approve formal production RPO/RTO values before production launch
 
 ### Phase Status
 
-**Current status:** IN PROGRESS
+**Current status:** VERIFIED COMPLETE
 
-- [ ] PHASE 0 COMPLETE
+- [x] PHASE 0 COMPLETE
+
+### Roadmap Status
+
+- [x] Phase 1 NOT STARTED
