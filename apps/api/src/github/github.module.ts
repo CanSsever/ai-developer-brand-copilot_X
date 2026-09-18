@@ -3,9 +3,14 @@ import { Module } from "@nestjs/common";
 
 import { GitHubApiService } from "./github-api.service";
 import { GitHubAppAuthService } from "./github-app-auth.service";
+import { GitHubCommitSyncService } from "./github-commit-sync.service";
 import { GitHubConnectionService } from "./github-connection.service";
 import { GitHubController } from "./github.controller";
-import { GITHUB_APP_CONFIG, GITHUB_FETCH } from "./github.tokens";
+import {
+  GITHUB_APP_CONFIG,
+  GITHUB_FETCH,
+  GITHUB_SYNC_CLOCK,
+} from "./github.tokens";
 import type { GitHubAppConfig } from "./github.types";
 
 @Module({})
@@ -17,10 +22,13 @@ export class GitHubModule {
       providers: [
         { provide: GITHUB_APP_CONFIG, useValue: config },
         { provide: GITHUB_FETCH, useValue: fetch },
+        { provide: GITHUB_SYNC_CLOCK, useValue: () => new Date() },
         GitHubAppAuthService,
         GitHubApiService,
+        GitHubCommitSyncService,
         GitHubConnectionService,
       ],
+      exports: [GitHubCommitSyncService],
     };
   }
 }

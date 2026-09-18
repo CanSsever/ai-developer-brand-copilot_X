@@ -56,13 +56,32 @@ This tracker records verified repository state for Phase 1. The governing implem
 
 ## Task 1.2 — Incremental Commit Synchronization
 
-- [ ] implement one ownership-safe server-side synchronization service
-- [ ] synchronize default-branch commits for the initial 30 developer-days, capped at 500 commits
-- [ ] use the last successful boundary with the required 24-hour overlap
-- [ ] paginate to the boundary or configured safety limit
-- [ ] persist commits and file metadata idempotently
-- [ ] mark unreachable evidence with `orphanedAt` as required
-- [ ] Task 1.2 NOT STARTED
+- [x] one internal server-side synchronization service loads trusted repository and installation identity from persistence
+- [x] default-branch initial synchronization uses a fixed 30-day window capped at 500 commits
+- [x] incremental synchronization uses the last successful boundary with the required 24-hour overlap
+- [x] commit and changed-file pagination use explicit safety limits and fail closed rather than truncate silently
+- [x] unseen commits and normalized file metadata persist idempotently
+- [x] overlapping runs do not duplicate commit or file rows
+- [x] in-window evidence no longer reachable from the default branch is marked with `orphanedAt`
+- [x] SyncRun queued/running/success/failure transitions and counters are implemented
+- [x] `lastSuccessfulSyncAt` advances to the fixed window end only after full success
+- [x] provider calls occur outside database transactions; final success state and boundary update atomically
+- [x] deterministic synthetic tests cover provider, persistence, pagination, overlap, conflict, failure, and privacy behavior
+- [x] no public/manual endpoint, dashboard action, scheduler, queue, webhook, or pull-request ingestion was added
+
+### Task 1.2 Design Notes
+
+- The internal entry point accepts only a persisted `ConnectedRepository.id`; provider owner/name values are never accepted from browser input.
+- The GitHub API service resolves the current repository location from the immutable provider repository ID before listing the persisted default-branch evidence window.
+- A SHA-256 idempotency key is derived from connected repository ID, fixed window start/end, and cursor version. The database partial unique index remains the race-safe active-run gate.
+- Commit listing completes before detail retrieval. Only SHAs absent from the same connected repository receive detail requests.
+- Each new commit and its file rows use one nested atomic Prisma create. Partial completed evidence remains safely idempotent if a later operation fails.
+- The final SyncRun success state, safe counters, refreshed repository metadata, and successful boundary update share one short database transaction.
+- Real GitHub ingestion verification is deferred to Task 1.7; Task 1.2 uses deterministic synthetic provider fixtures and does not add a temporary public trigger.
+
+### Task Status
+
+- [x] Task 1.2 VERIFIED COMPLETE
 
 ## Task 1.3 — Retry, Idempotency & Provider Error Hardening
 
@@ -71,6 +90,7 @@ This tracker records verified repository state for Phase 1. The governing implem
 - [ ] verify repeated and overlapping runs create no duplicates
 - [ ] preserve bot-authored evidence for later default exclusion from intelligence
 - [ ] test cancellation and authorization loss safely
+- [x] Task 1.3 NOT STARTED
 
 ## Task 1.4 — Manual Sync API & Dashboard Status
 
@@ -105,5 +125,6 @@ This tracker records verified repository state for Phase 1. The governing implem
 ## Current Status
 
 - [x] Phase 1 IN PROGRESS
-- [x] Task 1.2 NOT STARTED
+- [x] Task 1.2 VERIFIED COMPLETE
+- [x] Task 1.3 NOT STARTED
 - [x] Phase 2 NOT STARTED

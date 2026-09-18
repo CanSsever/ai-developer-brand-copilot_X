@@ -1,6 +1,6 @@
 # AI Developer Brand Copilot
 
-This repository contains the verified Phase 0 engineering foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, the GitHub App connection foundation, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 1 is in progress: the raw commit and synchronization-run persistence foundation exists, but GitHub activity fetching and synchronization are not implemented yet. Product intelligence and AI integration remain outside the current phase.
+This repository contains the verified Phase 0 engineering foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, the GitHub App connection foundation, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 1 is in progress: raw commit persistence and an internal incremental commit-synchronization service are implemented. User-triggered sync, background scheduling, merged pull-request ingestion, product intelligence, and AI integration are not implemented yet.
 
 ## Prerequisites
 
@@ -191,7 +191,17 @@ Commit identity is unique by connected repository and SHA, so an overlapping fet
 
 All three ingestion tables have RLS enabled. Authenticated database clients can select only rows that resolve through both the owned Project and GitHub connection; direct client writes are not granted. Application and future worker writes remain server-only and must retain API ownership checks.
 
-This persistence layer does not fetch GitHub commits, start manual or background synchronization, ingest pull requests, expose repository evidence through an API, or implement `DevelopmentEvent`/AI behavior.
+This persistence layer itself exposes no API behavior. Commit fetching is performed only by the internal service described below; manual/background synchronization, pull-request ingestion, repository-evidence APIs, `DevelopmentEvent`, and AI behavior remain unimplemented.
+
+### Internal incremental commit synchronization
+
+`GitHubCommitSyncService` is an internal server-side capability with no public controller or dashboard action. It loads an active `ConnectedRepository` and its installation identity from persistence, resolves the repository through its immutable provider ID, obtains short-lived installation tokens inside the existing GitHub API service, and reads commits reachable from the current default branch.
+
+An initial run uses one fixed 30-day window capped at 500 commits. A later run starts 24 hours before `lastSuccessfulSyncAt` and ends at one fixed captured time. Commit and file uniqueness constraints make the intentional overlap idempotent. The provider reader paginates commits and changed files within explicit limits and fails closed if the supported boundary is exceeded instead of silently truncating.
+
+Only unseen SHAs receive commit-detail requests. Each new commit and its normalized file metadata are written atomically; previously stored evidence in the completed window is marked reachable or orphaned according to the default-branch result. Provider calls never run inside a database transaction. After all evidence work succeeds, the final SyncRun state and `lastSuccessfulSyncAt` advance atomically to the captured window end. Failures retain a safe code and never advance the success boundary.
+
+Installation tokens, Authorization headers, provider error payloads, patches, file contents, commit messages, and file paths are not written to routine logs or returned by the service. Real GitHub ingestion verification remains part of the later Phase 1 live exit gate.
 
 ## API observability baseline
 
