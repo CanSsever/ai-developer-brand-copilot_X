@@ -54,6 +54,12 @@ export interface GitHubCommitEvidence {
 }
 
 export interface GitHubCommitListResult {
+  readonly attemptCount: number;
   readonly commits: readonly GitHubCommitSummary[];
   readonly repository: AuthorizedGitHubRepository;
+}
+
+export interface GitHubCommitDetailResult {
+  readonly attemptCount: number;
+  readonly commits: readonly GitHubCommitEvidence[];
 }

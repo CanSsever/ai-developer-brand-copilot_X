@@ -20,9 +20,11 @@ export const syncCursorVersion = 1;
 type SyncFailureCode =
   | GitHubIntegrationFailureCode
   | "CONNECTED_REPOSITORY_NOT_AVAILABLE"
+  | "SYNC_CANCELLED"
   | "SYNC_INTERNAL_ERROR";
 
 export interface GitHubCommitSyncResult {
+  readonly attemptCount: number;
   readonly commitsDiscovered: number;
   readonly commitsInserted: number;
   readonly status: "succeeded";
@@ -41,7 +43,11 @@ interface SyncRepository {
 }
 
 export class GitHubCommitSyncError extends Error {
-  constructor(readonly failureCode: SyncFailureCode) {
+  constructor(
+    readonly failureCode: SyncFailureCode,
+    readonly attemptCount = 0,
+    readonly retryAfterAt: Date | null = null
+  ) {
     super("GitHub commit synchronization failed");
     this.name = "GitHubCommitSyncError";
   }
@@ -144,6 +150,7 @@ export class GitHubCommitSyncService {
 
     let commitsDiscovered = 0;
     let commitsInserted = 0;
+    let attemptCount = 0;
     this.logger.info("github_commit_sync_started", {
       syncRunId: syncRun.id,
       windowEnd: windowEnd.toISOString(),
@@ -161,6 +168,7 @@ export class GitHubCommitSyncService {
         repository.providerRepositoryId,
         { since: windowStart, until: windowEnd }
       );
+      attemptCount += listed.attemptCount;
       const discoveredShas = [
         ...new Set(listed.commits.map((commit) => commit.sha)),
       ];
@@ -178,12 +186,16 @@ export class GitHubCommitSyncService {
             });
       const existingShas = new Set(existing.map((commit) => commit.sha));
       const newShas = discoveredShas.filter((sha) => !existingShas.has(sha));
-      const details = await this.github.getRepositoryCommitDetails(
+      const detailResult = await this.github.getRepositoryCommitDetails(
         repository.gitHubConnection.providerInstallationId,
         listed.repository,
         newShas
       );
-      const detailsBySha = this.indexDetails(details, newShas);
+      attemptCount += detailResult.attemptCount;
+      const detailsBySha = this.indexDetails(
+        detailResult.commits,
+        newShas
+      );
 
       for (const sha of newShas) {
         const detail = detailsBySha.get(sha);
@@ -209,6 +221,22 @@ export class GitHubCommitSyncService {
 
       const finishedAt = this.clock();
       await this.prisma.$transaction(async (transaction) => {
+        const completed = await transaction.syncRun.updateMany({
+          where: { id: syncRun.id, status: "running" },
+          data: {
+            status: "succeeded",
+            finishedAt,
+            commitsDiscovered,
+            commitsInserted,
+            attemptCount,
+            retryAfterAt: null,
+            failureCode: null,
+          },
+        });
+        if (completed.count !== 1) {
+          throw new GitHubCommitSyncError("SYNC_CANCELLED");
+        }
+
         const updated = await transaction.connectedRepository.updateMany({
           where: {
             id: repository.id,
@@ -228,25 +256,16 @@ export class GitHubCommitSyncService {
             "CONNECTED_REPOSITORY_NOT_AVAILABLE"
           );
         }
-
-        await transaction.syncRun.update({
-          where: { id: syncRun.id },
-          data: {
-            status: "succeeded",
-            finishedAt,
-            commitsDiscovered,
-            commitsInserted,
-            failureCode: null,
-          },
-        });
       });
 
       this.logger.info("github_commit_sync_succeeded", {
+        attemptCount,
         commitsDiscovered,
         commitsInserted,
         syncRunId: syncRun.id,
       });
       return {
+        attemptCount,
         commitsDiscovered,
         commitsInserted,
         status: "succeeded",
@@ -256,6 +275,7 @@ export class GitHubCommitSyncService {
       };
     } catch (error) {
       const failure = this.classifyFailure(error);
+      attemptCount += failure.attemptCount;
       const finishedAt = this.clock();
       try {
         await this.prisma.syncRun.updateMany({
@@ -271,6 +291,10 @@ export class GitHubCommitSyncService {
             finishedAt,
             commitsDiscovered,
             commitsInserted,
+            attemptCount,
+            retryAfterAt: failure.retryable
+              ? failure.retryAfterAt
+              : null,
             failureCode: failure.failureCode,
           },
         });
@@ -281,10 +305,16 @@ export class GitHubCommitSyncService {
         });
       }
       this.logger.errorEvent("github_commit_sync_failed", {
+        attemptCount,
         failureCode: failure.failureCode,
+        retryAfterAt: failure.retryAfterAt?.toISOString(),
         syncRunId: syncRun.id,
       });
-      throw new GitHubCommitSyncError(failure.failureCode);
+      throw new GitHubCommitSyncError(
+        failure.failureCode,
+        attemptCount,
+        failure.retryable ? failure.retryAfterAt : null
+      );
     }
   }
 
@@ -419,18 +449,32 @@ export class GitHubCommitSyncService {
   }
 
   private classifyFailure(error: unknown): {
+    readonly attemptCount: number;
     readonly failureCode: SyncFailureCode;
+    readonly retryAfterAt: Date | null;
     readonly retryable: boolean;
   } {
     if (error instanceof GitHubIntegrationError) {
       return {
+        attemptCount: error.attemptCount,
         failureCode: error.failureCode,
+        retryAfterAt: error.retryAfterAt,
         retryable: error.retryable,
       };
     }
     if (error instanceof GitHubCommitSyncError) {
-      return { failureCode: error.failureCode, retryable: false };
+      return {
+        attemptCount: error.attemptCount,
+        failureCode: error.failureCode,
+        retryAfterAt: error.retryAfterAt,
+        retryable: false,
+      };
     }
-    return { failureCode: "SYNC_INTERNAL_ERROR", retryable: true };
+    return {
+      attemptCount: 0,
+      failureCode: "SYNC_INTERNAL_ERROR",
+      retryAfterAt: null,
+      retryable: true,
+    };
   }
 }

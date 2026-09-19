@@ -1,3 +1,5 @@
 export const GITHUB_APP_CONFIG = Symbol("GITHUB_APP_CONFIG");
 export const GITHUB_FETCH = Symbol("GITHUB_FETCH");
+export const GITHUB_RETRY_DELAY = Symbol("GITHUB_RETRY_DELAY");
+export const GITHUB_RETRY_RANDOM = Symbol("GITHUB_RETRY_RANDOM");
 export const GITHUB_SYNC_CLOCK = Symbol("GITHUB_SYNC_CLOCK");

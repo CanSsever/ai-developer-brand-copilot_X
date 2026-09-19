@@ -203,6 +203,16 @@ Only unseen SHAs receive commit-detail requests. Each new commit and its normali
 
 Installation tokens, Authorization headers, provider error payloads, patches, file contents, commit messages, and file paths are not written to routine logs or returned by the service. Real GitHub ingestion verification remains part of the later Phase 1 live exit gate.
 
+### Provider retry and rate-limit behavior
+
+GitHub provider calls classify network errors and timeouts, transient 5xx responses, primary rate limits, and identifiable secondary rate limits as retryable. Authorization or repository-access failures, malformed provider responses, and configured safety-limit failures are terminal for the current SyncRun. Raw provider error bodies and header collections are neither logged nor persisted.
+
+Each provider HTTP call has at most three attempts. Local exponential backoff starts at 250 ms, includes bounded jitter, and is capped at 2 seconds. Valid `Retry-After` or `X-RateLimit-Reset` timing takes precedence. Provider delays of at most 5 seconds may be awaited inline; longer windows are normalized to a maximum 24-hour metadata horizon, persisted as `SyncRun.retryAfterAt`, and deferred instead of sleeping in-process. Malformed timing falls back to bounded local backoff.
+
+`SyncRun.attemptCount` records the total GitHub HTTP attempts made by that run, including successful requests, while `retryAfterAt` is present only on `failed_retryable` runs. A successful retry completes the same SyncRun. Exhausted or deferred transient failures end as `failed_retryable`; terminal failures end as `failed_terminal`; neither advances `lastSuccessfulSyncAt`. Final success is conditional on the run still being `running`, so cancellation cannot be overwritten. Existing repository/SHA, commit-file, idempotency-key, and active-run database constraints remain authoritative.
+
+This task does not schedule or automatically re-run failed synchronization. Manual and background orchestration remain later Phase 1 work.
+
 ## API observability baseline
 
 Every API request receives a bounded correlation identifier. A caller-provided `X-Request-Id` is reused only when it is a canonical UUID v4; otherwise the API generates a UUID. The identifier is stored in an `AsyncLocalStorage` request context, returned in the `X-Request-Id` response header, included in request logs, and included in API error responses.

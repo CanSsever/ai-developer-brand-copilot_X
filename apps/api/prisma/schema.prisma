@@ -136,6 +136,8 @@ model SyncRun {
   finishedAt            DateTime?           @db.Timestamptz(3)
   commitsDiscovered     Int                 @default(0)
   commitsInserted       Int                 @default(0)
+  attemptCount          Int                 @default(0)
+  retryAfterAt          DateTime?           @db.Timestamptz(3)
   failureCode           String?             @db.VarChar(64)
   createdAt             DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt             DateTime            @default(now()) @updatedAt @db.Timestamptz(3)

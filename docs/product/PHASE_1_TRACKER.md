@@ -85,12 +85,34 @@ This tracker records verified repository state for Phase 1. The governing implem
 
 ## Task 1.3 — Retry, Idempotency & Provider Error Hardening
 
-- [ ] classify timeout, transient 5xx, rate-limit, authorization, and terminal failures
-- [ ] persist safe rate-limit reset metadata and retry no earlier than allowed
-- [ ] verify repeated and overlapping runs create no duplicates
-- [ ] preserve bot-authored evidence for later default exclusion from intelligence
-- [ ] test cancellation and authorization loss safely
-- [x] Task 1.3 NOT STARTED
+- [x] classify network/timeout, transient 5xx, primary/secondary rate-limit, authorization, malformed-response, and safety-limit failures
+- [x] retry only normalized retryable provider calls with three finite attempts and bounded exponential backoff/jitter
+- [x] honor valid short `Retry-After` and `X-RateLimit-Reset` timing; defer long waits without sleeping in-process
+- [x] persist only safe `attemptCount`, `retryAfterAt`, and failure-code metadata
+- [x] finalize exhausted/deferred failures as `failed_retryable` and terminal failures as `failed_terminal`
+- [x] never advance `lastSuccessfulSyncAt` on failure or overwrite a cancelled run
+- [x] verify repeated and overlapping runs create no duplicate commit/file evidence
+- [x] preserve partial and bot-authored raw evidence for later idempotent processing and default intelligence exclusion
+- [x] keep installation tokens ephemeral and exclude tokens, provider payloads, commit messages, and file paths from retry logs
+- [x] deterministic synthetic tests cover retry success/exhaustion, rate-limit timing, authorization loss, cancellation, partial progress, and privacy
+- [x] one focused forward migration adds retry metadata without changing ownership or RLS
+- [x] forward migration deploy, database connectivity check, and migration-status verification pass against the configured development database
+- [x] no endpoint, dashboard action, scheduler, cron, queue, worker, webhook, or pull-request ingestion was added
+
+### Task 1.3 Design Notes
+
+- The centralized provider policy permits at most three HTTP attempts per call. Local backoff starts at 250 ms, is capped at 2 seconds, and uses bounded jitter supplied through an injectable random source.
+- Valid provider timing overrides local backoff. Inline waits are capped at 5 seconds; longer provider windows produce a deferred retryable failure with a normalized `retryAfterAt` capped to a 24-hour metadata horizon.
+- `SyncRun.attemptCount` is the total number of GitHub HTTP attempts in the run, including successful requests. `retryAfterAt` is constrained to `failed_retryable` rows and no raw headers or provider payloads are stored.
+- One installation token is reused throughout each list or detail phase. Tokens remain process-memory-only and authorization failures are terminal rather than causing an unbounded token-refresh loop.
+- Provider calls and retry delays remain outside database transactions. Previously committed evidence is retained after later failure, while database uniqueness and the 24-hour overlap make a later run idempotent.
+- Final success updates the SyncRun only while it is still `running`; a concurrent cancellation cannot be overwritten and the repository success boundary is not advanced.
+- Development-database deployment, migration status, and connectivity were verified with TLS certificate validation enabled through the Supabase CA; no SSL verification bypass was used.
+- Automatic delayed re-execution is intentionally absent. Task 1.4 and Task 1.5 will own manual and scheduled orchestration.
+
+### Task Status
+
+- [x] Task 1.3 VERIFIED COMPLETE
 
 ## Task 1.4 — Manual Sync API & Dashboard Status
 
@@ -98,6 +120,7 @@ This tracker records verified repository state for Phase 1. The governing implem
 - [ ] rate-limit manual synchronization per user and repository
 - [ ] acknowledge asynchronous work within the PDR target
 - [ ] show queued, running, success, partial-import, rate-limit, authorization, retry, cancellation, and terminal states safely
+- [x] Task 1.4 NOT STARTED
 
 ## Task 1.5 — Background Synchronization
 
@@ -126,5 +149,6 @@ This tracker records verified repository state for Phase 1. The governing implem
 
 - [x] Phase 1 IN PROGRESS
 - [x] Task 1.2 VERIFIED COMPLETE
-- [x] Task 1.3 NOT STARTED
+- [x] Task 1.3 VERIFIED COMPLETE
+- [x] Task 1.4 NOT STARTED
 - [x] Phase 2 NOT STARTED

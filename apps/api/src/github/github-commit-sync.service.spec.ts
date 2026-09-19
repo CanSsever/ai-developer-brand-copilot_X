@@ -95,12 +95,16 @@ function harness(options: {
 
   const github = {
     listRepositoryCommitSummaries: vi.fn().mockResolvedValue({
+      attemptCount: 3,
       repository: providerRepository,
       commits: [{ sha: firstSha }],
     }),
     getRepositoryCommitDetails: vi
       .fn()
-      .mockResolvedValue([evidence(firstSha)]),
+      .mockResolvedValue({
+        attemptCount: 2,
+        commits: [evidence(firstSha)],
+      }),
   };
   const logger = {
     info: vi.fn(),
@@ -129,6 +133,7 @@ describe("GitHubCommitSyncService", () => {
     const result = await service.synchronize(repositoryId);
 
     expect(result).toMatchObject({
+      attemptCount: 5,
       status: "succeeded",
       syncRunId,
       commitsDiscovered: 1,
@@ -208,13 +213,15 @@ describe("GitHubCommitSyncService", () => {
         }),
       })
     );
-    expect(prisma.syncRun.update).toHaveBeenLastCalledWith({
-      where: { id: syncRunId },
+    expect(prisma.syncRun.updateMany).toHaveBeenLastCalledWith({
+      where: { id: syncRunId, status: "running" },
       data: {
         status: "succeeded",
         finishedAt: new Date("2026-09-18T12:02:00.000Z"),
         commitsDiscovered: 1,
         commitsInserted: 1,
+        attemptCount: 5,
+        retryAfterAt: null,
         failureCode: null,
       },
     });
@@ -252,7 +259,10 @@ describe("GitHubCommitSyncService", () => {
       lastSuccessfulSyncAt: new Date("2026-09-18T08:00:00.000Z"),
     });
     prisma.gitHubCommit.findMany.mockResolvedValue([{ sha: firstSha }]);
-    github.getRepositoryCommitDetails.mockResolvedValue([]);
+    github.getRepositoryCommitDetails.mockResolvedValue({
+      attemptCount: 0,
+      commits: [],
+    });
 
     const result = await service.synchronize(repositoryId);
 
@@ -291,13 +301,15 @@ describe("GitHubCommitSyncService", () => {
   it("reports discovered and inserted counts independently", async () => {
     const { github, prisma, service } = harness();
     github.listRepositoryCommitSummaries.mockResolvedValue({
+      attemptCount: 3,
       repository: providerRepository,
       commits: [{ sha: firstSha }, { sha: secondSha }],
     });
     prisma.gitHubCommit.findMany.mockResolvedValue([{ sha: firstSha }]);
-    github.getRepositoryCommitDetails.mockResolvedValue([
-      evidence(secondSha),
-    ]);
+    github.getRepositoryCommitDetails.mockResolvedValue({
+      attemptCount: 2,
+      commits: [evidence(secondSha)],
+    });
 
     const result = await service.synchronize(repositoryId);
 
@@ -305,7 +317,7 @@ describe("GitHubCommitSyncService", () => {
       commitsDiscovered: 2,
       commitsInserted: 1,
     });
-    expect(prisma.syncRun.update).toHaveBeenLastCalledWith(
+    expect(prisma.syncRun.updateMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           commitsDiscovered: 2,
@@ -366,7 +378,11 @@ describe("GitHubCommitSyncService", () => {
   it("records a retryable provider failure and never advances the success boundary", async () => {
     const { github, logger, prisma, service } = harness();
     github.listRepositoryCommitSummaries.mockRejectedValue(
-      new GitHubIntegrationError("GITHUB_PROVIDER_UNAVAILABLE", true)
+      new GitHubIntegrationError(
+        "GITHUB_PROVIDER_UNAVAILABLE",
+        true,
+        3
+      )
     );
 
     await expect(service.synchronize(repositoryId)).rejects.toMatchObject({
@@ -384,6 +400,8 @@ describe("GitHubCommitSyncService", () => {
         finishedAt: new Date("2026-09-18T12:02:00.000Z"),
         commitsDiscovered: 0,
         commitsInserted: 0,
+        attemptCount: 3,
+        retryAfterAt: null,
         failureCode: "GITHUB_PROVIDER_UNAVAILABLE",
       },
     });
@@ -394,10 +412,132 @@ describe("GitHubCommitSyncService", () => {
     );
   });
 
+  it("persists normalized rate-limit timing without advancing the success boundary", async () => {
+    const retryAfterAt = new Date("2026-09-18T13:00:00.000Z");
+    const { github, logger, prisma, service } = harness();
+    github.listRepositoryCommitSummaries.mockRejectedValue(
+      new GitHubIntegrationError(
+        "GITHUB_RATE_LIMITED",
+        true,
+        1,
+        retryAfterAt
+      )
+    );
+
+    await expect(service.synchronize(repositoryId)).rejects.toMatchObject({
+      attemptCount: 1,
+      failureCode: "GITHUB_RATE_LIMITED",
+      retryAfterAt,
+    });
+    expect(prisma.syncRun.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: syncRunId,
+        status: { in: ["queued", "running"] },
+      },
+      data: expect.objectContaining({
+        status: "failed_retryable",
+        attemptCount: 1,
+        retryAfterAt,
+        failureCode: "GITHUB_RATE_LIMITED",
+      }),
+    });
+    expect(prisma.connectedRepository.updateMany).not.toHaveBeenCalled();
+    expect(JSON.stringify(logger.errorEvent.mock.calls)).not.toContain(
+      privateMessage
+    );
+  });
+
+  it("retains already persisted evidence when a later commit write fails", async () => {
+    const { github, prisma, service } = harness();
+    github.listRepositoryCommitSummaries.mockResolvedValue({
+      attemptCount: 3,
+      repository: providerRepository,
+      commits: [{ sha: firstSha }, { sha: secondSha }],
+    });
+    github.getRepositoryCommitDetails.mockResolvedValue({
+      attemptCount: 3,
+      commits: [evidence(firstSha), evidence(secondSha)],
+    });
+    prisma.gitHubCommit.create
+      .mockResolvedValueOnce({ id: "first-commit-record-id" })
+      .mockRejectedValueOnce(new Error("synthetic persistence failure"));
+
+    await expect(service.synchronize(repositoryId)).rejects.toMatchObject({
+      attemptCount: 6,
+      failureCode: "SYNC_INTERNAL_ERROR",
+    });
+    expect(prisma.gitHubCommit.create).toHaveBeenCalledTimes(2);
+    expect(prisma.syncRun.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: syncRunId,
+        status: { in: ["queued", "running"] },
+      },
+      data: expect.objectContaining({
+        status: "failed_retryable",
+        commitsDiscovered: 2,
+        commitsInserted: 1,
+        attemptCount: 6,
+      }),
+    });
+    expect(prisma.connectedRepository.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("preserves bot-authored raw evidence for later intelligence filtering", async () => {
+    const { github, prisma, service } = harness();
+    github.getRepositoryCommitDetails.mockResolvedValue({
+      attemptCount: 2,
+      commits: [
+        {
+          ...evidence(firstSha),
+          authorLogin: "dependency-bot[bot]",
+        },
+      ],
+    });
+
+    await service.synchronize(repositoryId);
+
+    expect(prisma.gitHubCommit.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        authorLogin: "dependency-bot[bot]",
+        sha: firstSha,
+      }),
+    });
+  });
+
+  it("does not overwrite a cancelled run or advance its success boundary", async () => {
+    const { prisma, service } = harness();
+    prisma.syncRun.updateMany
+      .mockResolvedValueOnce({ count: 0 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    await expect(service.synchronize(repositoryId)).rejects.toMatchObject({
+      failureCode: "SYNC_CANCELLED",
+    });
+    expect(prisma.syncRun.updateMany).toHaveBeenNthCalledWith(1, {
+      where: { id: syncRunId, status: "running" },
+      data: expect.objectContaining({ status: "succeeded" }),
+    });
+    expect(prisma.syncRun.updateMany).toHaveBeenNthCalledWith(2, {
+      where: {
+        id: syncRunId,
+        status: { in: ["queued", "running"] },
+      },
+      data: expect.objectContaining({
+        status: "failed_terminal",
+        failureCode: "SYNC_CANCELLED",
+      }),
+    });
+    expect(prisma.connectedRepository.updateMany).not.toHaveBeenCalled();
+  });
+
   it("records invalid provider evidence as a terminal safe failure", async () => {
     const { github, prisma, service } = harness();
     github.getRepositoryCommitDetails.mockRejectedValue(
-      new GitHubIntegrationError("GITHUB_RESPONSE_INVALID")
+      new GitHubIntegrationError(
+        "GITHUB_RESPONSE_INVALID",
+        false,
+        2
+      )
     );
 
     await expect(service.synchronize(repositoryId)).rejects.toBeInstanceOf(
@@ -408,6 +548,32 @@ describe("GitHubCommitSyncService", () => {
       failureCode: "GITHUB_RESPONSE_INVALID",
       commitsDiscovered: 1,
       commitsInserted: 0,
+      attemptCount: 5,
+      retryAfterAt: null,
+    });
+    expect(prisma.connectedRepository.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("records authorization loss as terminal and does not advance the boundary", async () => {
+    const { github, prisma, service } = harness();
+    github.listRepositoryCommitSummaries.mockRejectedValue(
+      new GitHubIntegrationError(
+        "GITHUB_AUTHORIZATION_FAILED",
+        false,
+        1
+      )
+    );
+
+    await expect(service.synchronize(repositoryId)).rejects.toMatchObject({
+      attemptCount: 1,
+      failureCode: "GITHUB_AUTHORIZATION_FAILED",
+      retryAfterAt: null,
+    });
+    expect(prisma.syncRun.updateMany.mock.calls[0]?.[0].data).toMatchObject({
+      status: "failed_terminal",
+      failureCode: "GITHUB_AUTHORIZATION_FAILED",
+      attemptCount: 1,
+      retryAfterAt: null,
     });
     expect(prisma.connectedRepository.updateMany).not.toHaveBeenCalled();
   });
