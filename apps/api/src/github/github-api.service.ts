@@ -18,6 +18,8 @@ import type {
   GitHubCommitListResult,
   GitHubCommitSummary,
   GitHubCommitWindow,
+  GitHubPullRequestEvidence,
+  GitHubPullRequestListResult,
   VerifiedGitHubInstallation,
 } from "./github.types";
 
@@ -30,6 +32,13 @@ const filePageSize = 100;
 const maxFileItems = 3_000;
 const maxFilePages = maxFileItems / filePageSize + 1;
 const maxSyncFileItems = 10_000;
+const pullRequestPageSize = 100;
+const maxPullRequestItems = 500;
+const maxPullRequestPages = maxPullRequestItems / pullRequestPageSize + 1;
+const maxPullRequestCommitItems = 250;
+const maxPullRequestCommitPages =
+  Math.ceil(maxPullRequestCommitItems / commitPageSize) + 1;
+const maxPullRequestBodyLength = 2_000;
 const shaPattern = /^[0-9a-f]{40}([0-9a-f]{24})?$/;
 export const githubProviderRetryPolicy = Object.freeze({
   maximumAttempts: 3,
@@ -92,6 +101,14 @@ function nonnegativeInteger(value: unknown): number | null {
     : null;
 }
 
+function positiveInteger(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value > 0
+    ? value
+    : null;
+}
+
 function requiredDate(value: unknown): Date {
   if (typeof value !== "string") {
     throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
@@ -111,6 +128,22 @@ function optionalBoundedText(value: unknown, maximumLength: number): string | nu
     throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
   }
   return value === "" ? null : value;
+}
+
+function requiredBoundedText(value: unknown, maximumLength: number): string {
+  const text = optionalBoundedText(value, maximumLength);
+  if (!text) {
+    throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+  }
+  return text;
+}
+
+function limitedBodySummary(value: unknown): string | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string") {
+    throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+  }
+  return value.slice(0, maxPullRequestBodyLength);
 }
 
 function requireSha(value: unknown): string {
@@ -346,6 +379,97 @@ export class GitHubApiService {
     });
   }
 
+  async listMergedPullRequests(
+    installationId: bigint,
+    repository: AuthorizedGitHubRepository,
+    window: GitHubCommitWindow
+  ): Promise<GitHubPullRequestListResult> {
+    return this.withAttemptTracking(async (tracker) => {
+      const installationToken = await this.createInstallationToken(
+        installationId,
+        tracker
+      );
+      const numbers: number[] = [];
+      const seenNumbers = new Set<number>();
+
+      for (let page = 1; page <= maxPullRequestPages; page += 1) {
+        const query = new URLSearchParams({
+          order: "desc",
+          page: String(page),
+          per_page: String(pullRequestPageSize),
+          q: [
+            `repo:${repository.owner}/${repository.name}`,
+            "is:pr",
+            "is:merged",
+            `merged:${window.since.toISOString()}..${window.until.toISOString()}`,
+          ].join(" "),
+          sort: "updated",
+        });
+        const response = await this.apiRequest(
+          `/search/issues?${query.toString()}`,
+          installationToken,
+          {},
+          tracker
+        );
+        const body = await this.readJson(response);
+        if (
+          !isRecord(body) ||
+          !Array.isArray(body.items) ||
+          body.items.length > pullRequestPageSize ||
+          !Number.isSafeInteger(body.total_count) ||
+          (body.total_count as number) < 0
+        ) {
+          throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+        }
+        if ((body.total_count as number) > maxPullRequestItems) {
+          throw new GitHubIntegrationError("GITHUB_SAFETY_LIMIT_EXCEEDED");
+        }
+
+        for (const item of body.items) {
+          if (!isRecord(item) || !isRecord(item.pull_request)) {
+            throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+          }
+          const number = positiveInteger(item.number);
+          if (number === null || seenNumbers.has(number)) {
+            throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+          }
+          seenNumbers.add(number);
+          numbers.push(number);
+        }
+
+        if (
+          body.items.length < pullRequestPageSize ||
+          numbers.length >= (body.total_count as number)
+        ) {
+          break;
+        }
+        if (page === maxPullRequestPages) {
+          throw new GitHubIntegrationError("GITHUB_SAFETY_LIMIT_EXCEEDED");
+        }
+      }
+
+      const pullRequests: GitHubPullRequestEvidence[] = [];
+      let totalFiles = 0;
+      for (const number of numbers) {
+        const evidence = await this.getPullRequestEvidence(
+          repository,
+          number,
+          installationToken,
+          tracker,
+          window
+        );
+        if (!evidence) continue;
+        totalFiles += evidence.files.length;
+        if (totalFiles > maxSyncFileItems) {
+          throw new GitHubIntegrationError("GITHUB_SAFETY_LIMIT_EXCEEDED");
+        }
+        pullRequests.push(evidence);
+      }
+
+      return { attemptCount: tracker.count, pullRequests };
+    });
+  }
+
   private async createInstallationToken(
     installationId: bigint,
     tracker: ProviderAttemptTracker = { count: 0 }
@@ -541,6 +665,178 @@ export class GitHubApiService {
       throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
     }
     return { sha: requireSha(value.sha) };
+  }
+
+  private async getPullRequestEvidence(
+    repository: AuthorizedGitHubRepository,
+    number: number,
+    installationToken: string,
+    tracker: ProviderAttemptTracker,
+    window: GitHubCommitWindow
+  ): Promise<GitHubPullRequestEvidence | null> {
+    const basePath =
+      `/repos/${encodeURIComponent(repository.owner)}/` +
+      `${encodeURIComponent(repository.name)}/pulls/${number}`;
+    const detailResponse = await this.apiRequest(
+      basePath,
+      installationToken,
+      {},
+      tracker
+    );
+    const detail = await this.readJson(detailResponse);
+    if (!isRecord(detail)) {
+      throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+    }
+    if (detail.state !== "closed" || detail.merged_at === null) {
+      return null;
+    }
+
+    const mergedAt = requiredDate(detail.merged_at);
+    if (mergedAt < window.since || mergedAt > window.until) {
+      return null;
+    }
+
+    const providerPullRequestId = positiveBigInt(detail.id);
+    const providerNumber = positiveInteger(detail.number);
+    const additions = nonnegativeInteger(detail.additions);
+    const deletions = nonnegativeInteger(detail.deletions);
+    const changedFiles = nonnegativeInteger(detail.changed_files);
+    if (
+      !providerPullRequestId ||
+      providerNumber !== number ||
+      typeof detail.title !== "string" ||
+      detail.title.length === 0 ||
+      detail.title.length > 1_024 ||
+      !isRecord(detail.base) ||
+      !isRecord(detail.head) ||
+      additions === null ||
+      deletions === null ||
+      changedFiles === null
+    ) {
+      throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+    }
+
+    const baseBranch = requiredBoundedText(detail.base.ref, 255);
+    const headBranch = requiredBoundedText(detail.head.ref, 255);
+    const providerCreatedAt = requiredDate(detail.created_at);
+    const providerUpdatedAt = requiredDate(detail.updated_at);
+    if (
+      providerUpdatedAt < providerCreatedAt ||
+      mergedAt < providerCreatedAt
+    ) {
+      throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+    }
+
+    const files = await this.getPullRequestFiles(
+      basePath,
+      installationToken,
+      tracker
+    );
+    if (files.length !== changedFiles) {
+      throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+    }
+    const commitShas = await this.getPullRequestCommitShas(
+      basePath,
+      installationToken,
+      tracker
+    );
+
+    return {
+      additions,
+      authorLogin: isRecord(detail.user)
+        ? optionalBoundedText(detail.user.login, 255)
+        : null,
+      baseBranch,
+      bodySummary: limitedBodySummary(detail.body),
+      changedFiles,
+      commitShas,
+      deletions,
+      files,
+      headBranch,
+      mergeCommitSha:
+        detail.merge_commit_sha === null
+          ? null
+          : requireSha(detail.merge_commit_sha),
+      mergedAt,
+      number,
+      providerCreatedAt,
+      providerPullRequestId,
+      providerUpdatedAt,
+      state: "closed",
+      title: detail.title,
+    };
+  }
+
+  private async getPullRequestFiles(
+    basePath: string,
+    installationToken: string,
+    tracker: ProviderAttemptTracker
+  ): Promise<GitHubPullRequestEvidence["files"]> {
+    const files: GitHubPullRequestEvidence["files"][number][] = [];
+    for (let page = 1; page <= maxFilePages; page += 1) {
+      const query = new URLSearchParams({
+        page: String(page),
+        per_page: String(filePageSize),
+      });
+      const response = await this.apiRequest(
+        `${basePath}/files?${query.toString()}`,
+        installationToken,
+        {},
+        tracker
+      );
+      const body = await this.readJson(response);
+      if (!Array.isArray(body) || body.length > filePageSize) {
+        throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+      }
+      const pageFiles = body.map((value) => this.parseCommitFile(value));
+      if (files.length + pageFiles.length > maxFileItems) {
+        throw new GitHubIntegrationError("GITHUB_SAFETY_LIMIT_EXCEEDED");
+      }
+      files.push(...pageFiles);
+      if (pageFiles.length < filePageSize) {
+        if (new Set(files.map((file) => file.path)).size !== files.length) {
+          throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+        }
+        return files;
+      }
+    }
+    throw new GitHubIntegrationError("GITHUB_SAFETY_LIMIT_EXCEEDED");
+  }
+
+  private async getPullRequestCommitShas(
+    basePath: string,
+    installationToken: string,
+    tracker: ProviderAttemptTracker
+  ): Promise<readonly string[]> {
+    const shas: string[] = [];
+    for (let page = 1; page <= maxPullRequestCommitPages; page += 1) {
+      const query = new URLSearchParams({
+        page: String(page),
+        per_page: String(commitPageSize),
+      });
+      const response = await this.apiRequest(
+        `${basePath}/commits?${query.toString()}`,
+        installationToken,
+        {},
+        tracker
+      );
+      const body = await this.readJson(response);
+      if (!Array.isArray(body) || body.length > commitPageSize) {
+        throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+      }
+      const pageShas = body.map((value) => this.parseCommitSummary(value).sha);
+      if (shas.length + pageShas.length > maxPullRequestCommitItems) {
+        throw new GitHubIntegrationError("GITHUB_SAFETY_LIMIT_EXCEEDED");
+      }
+      shas.push(...pageShas);
+      if (pageShas.length < commitPageSize) {
+        if (new Set(shas).size !== shas.length) {
+          throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+        }
+        return shas;
+      }
+    }
+    throw new GitHubIntegrationError("GITHUB_SAFETY_LIMIT_EXCEEDED");
   }
 
   private async getCommitDetail(

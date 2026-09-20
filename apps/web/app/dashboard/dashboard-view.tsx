@@ -69,9 +69,13 @@ export function syncStatusMessage(sync: RepositorySyncSummary): string {
         latest.commitsInserted === 1
           ? "1 new commit imported."
           : `${latest.commitsInserted} new commits imported.`;
+      const pullRequests =
+        latest.pullRequestsInserted === 1
+          ? "1 merged pull request imported."
+          : `${latest.pullRequestsInserted} merged pull requests imported.`;
       return timestamp
-        ? `Last synced: ${formatSyncTime(timestamp)}. ${imported}`
-        : imported;
+        ? `Last synced: ${formatSyncTime(timestamp)}. ${imported} ${pullRequests}`
+        : `${imported} ${pullRequests}`;
     }
     case "failed_retryable":
       return latest.retryAfterAt

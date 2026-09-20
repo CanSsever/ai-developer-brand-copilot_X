@@ -1,6 +1,6 @@
 # AI Developer Brand Copilot
 
-This repository contains the verified Phase 0 engineering foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, the GitHub App connection foundation, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 1 is in progress: raw commit persistence, incremental commit synchronization, provider retry hardening, and authenticated manual synchronization are implemented. Background scheduling, merged pull-request ingestion, product intelligence, and AI integration are not implemented yet.
+This repository contains the verified Phase 0 engineering foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, the GitHub App connection foundation, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 1 is in progress: normalized commit and merged pull-request persistence, incremental combined synchronization, provider retry hardening, authenticated manual synchronization, and durable hourly background execution are implemented. Real provider ingestion exit verification remains reserved for Task 1.7; product intelligence and AI integration are not implemented.
 
 ## Prerequisites
 
@@ -164,7 +164,7 @@ Create a development GitHub App in **GitHub → Settings → Developer settings 
 - Organization and account permissions: none
 - Availability for local development: only the owning account; choose only the repository required for verification during installation
 
-Metadata read access supports repository identity and discovery. Contents read access is reserved for later read-only commit synchronization, and Pull requests read access is reserved for later merged pull-request synchronization required by the PDR. No write permission is requested.
+Metadata read access supports repository identity and discovery. Contents read access supports read-only commit synchronization, and Pull requests read access supports merged pull-request synchronization required by the PDR. No write permission is requested.
 
 Generate a private key from the GitHub App settings. Store these values only in the ignored `apps/api/.env`: `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_CLIENT_SECRET`, `GITHUB_APP_SLUG`, `GITHUB_APP_PRIVATE_KEY`, and `GITHUB_APP_CALLBACK_URL`. The PEM may be represented with escaped `\\n` line breaks. Never commit the PEM or paste it into chat. None of these values belongs in `NEXT_PUBLIC_*` configuration.
 
@@ -180,28 +180,35 @@ Task 0.7 does not implement commit or pull-request ingestion, webhook processing
 
 ## Raw GitHub ingestion persistence foundation
 
-Phase 1 Task 1.1 adds normalized, tenant-owned storage beneath each `ConnectedRepository`:
+Phase 1 adds normalized, tenant-owned raw evidence beneath each `ConnectedRepository`:
 
 - `GitHubCommit` stores commit identity, message, safe author labels, provider timestamps, parent SHAs, aggregate change statistics, and optional orphaning time.
 - `GitHubCommitFile` stores changed paths, change status, and numeric statistics. It never stores file contents or patches.
+- `GitHubPullRequest` stores repository-scoped provider identity, PR number, title, a body summary limited to 2,000 characters, author login, branches, provider timestamps, merge SHA, and aggregate statistics for merged PRs only.
+- `GitHubPullRequestFile` stores normalized changed-path metadata and statistics without patches or source contents.
+- `GitHubPullRequestCommit` stores deduplicated linked commit SHAs. It intentionally remains raw provider evidence even when a squash or rebase means a linked SHA is not present in the synchronized default-branch commit set.
 - `SyncRun` stores a constrained synchronization lifecycle, time-window boundary, cursor-algorithm version, SHA-256 idempotency key, safe counters, and an optional safe failure code.
 - `ConnectedRepository.lastSuccessfulSyncAt` is the durable successful time boundary for the later incremental synchronization service.
 
-Commit identity is unique by connected repository and SHA, so an overlapping fetch can be idempotent while the same Git object remains valid in multiple repositories. Only one queued or running synchronization may exist per connected repository. Deleting a local connected repository cascades to its raw commits, changed-file metadata, and synchronization history, matching the existing local-disconnect behavior and preventing orphaned provider data.
+Commit identity is unique by connected repository and SHA. Pull-request identity is unique by connected repository plus immutable provider PR ID, with repository-scoped PR number uniqueness as an additional integrity rule. PR file paths and linked commit SHAs are unique beneath each PR. Overlapping fetches are therefore idempotent while the same commit SHA or PR number remains valid in different repositories. Only one queued or running synchronization may exist per connected repository. Deleting a local connected repository cascades through all raw evidence and synchronization history.
 
-All three ingestion tables have RLS enabled. Authenticated database clients can select only rows that resolve through both the owned Project and GitHub connection; direct client writes are not granted. Application and future worker writes remain server-only and must retain API ownership checks.
+All raw-evidence and SyncRun tables have RLS enabled. Authenticated database clients can select only rows that resolve through both the owned Project and GitHub connection; direct client writes are not granted. Application and worker writes remain server-only and retain API ownership checks.
 
-This persistence layer itself exposes no API behavior. Commit fetching, manual enqueue, and durable background execution are implemented only through the server-side services described below. Pull-request ingestion, repository-evidence APIs, `DevelopmentEvent`, and AI behavior remain unimplemented.
+Raw evidence is not exposed through a browser evidence API. Fetching, manual enqueue, and durable background execution are implemented only through the server-side services described below. `DevelopmentEvent`, interpretation, scoring, and AI behavior remain unimplemented.
 
-### Internal incremental commit synchronization
+### Internal incremental GitHub activity synchronization
 
-`GitHubCommitSyncService` is the shared server-side synchronization capability. It loads an active `ConnectedRepository` and its installation identity from persistence, resolves the repository through its immutable provider ID, obtains short-lived installation tokens inside the existing GitHub API service, and reads commits reachable from the current default branch.
+`GitHubCommitSyncService` is the existing shared server-side synchronization capability; its historical class name is retained to avoid a broad refactor. It loads an active `ConnectedRepository` and its installation identity from persistence, resolves the repository through its immutable provider ID, obtains short-lived installation tokens inside the existing GitHub API service, and synchronizes both default-branch commits and merged pull-request evidence.
 
 An initial run uses one fixed 30-day window capped at 500 commits. A later run starts 24 hours before `lastSuccessfulSyncAt` and ends at one fixed captured time. Commit and file uniqueness constraints make the intentional overlap idempotent. The provider reader paginates commits and changed files within explicit limits and fails closed if the supported boundary is exceeded instead of silently truncating.
 
-Only unseen SHAs receive commit-detail requests. Each new commit and its normalized file metadata are written atomically; previously stored evidence in the completed window is marked reachable or orphaned according to the default-branch result. Provider calls never run inside a database transaction. After all evidence work succeeds, the final SyncRun state and `lastSuccessfulSyncAt` advance atomically to the captured window end. Failures retain a safe code and never advance the success boundary.
+Only unseen SHAs receive commit-detail requests. Each new commit and its normalized file metadata are written atomically; previously stored evidence in the completed window is marked reachable or orphaned according to the default-branch result.
 
-Installation tokens, Authorization headers, provider error payloads, patches, file contents, commit messages, and file paths are not written to routine logs or returned by the service. Real GitHub ingestion verification remains part of the later Phase 1 live exit gate.
+Merged PR discovery uses the same fixed 30-day initial or 24-hour-overlap incremental window, with `mergedAt` as its inclusion boundary. GitHub search is restricted to merged PRs, and every candidate is revalidated as closed, merged, and inside the fixed window before normalized details, changed-file metadata, and linked commit SHAs are accepted. Search, file, and linked-commit pagination have explicit safety limits and fail closed rather than truncating.
+
+PR upserts and child-row reconciliation are transactionally idempotent. Historical merged PRs are not assigned commit-style orphan semantics. Provider calls never run inside a database transaction. Commit evidence written before a later PR failure is retained, but the SyncRun fails and `lastSuccessfulSyncAt` does not advance. Only after both commit and PR ingestion succeed do the final SyncRun counters and successful boundary advance atomically.
+
+Installation tokens, Authorization headers, provider error payloads, patches, file contents, commit messages, PR titles/body summaries, and file paths are not written to routine logs or returned by the service. Real GitHub commit and PR ingestion verification remains part of the Task 1.7 Phase exit gate.
 
 ### Provider retry and rate-limit behavior
 
@@ -209,7 +216,7 @@ GitHub provider calls classify network errors and timeouts, transient 5xx respon
 
 Each provider HTTP call has at most three attempts. Local exponential backoff starts at 250 ms, includes bounded jitter, and is capped at 2 seconds. Valid `Retry-After` or `X-RateLimit-Reset` timing takes precedence. Provider delays of at most 5 seconds may be awaited inline; longer windows are normalized to a maximum 24-hour metadata horizon, persisted as `SyncRun.retryAfterAt`, and deferred instead of sleeping in-process. Malformed timing falls back to bounded local backoff.
 
-`SyncRun.attemptCount` records the total GitHub HTTP attempts made by that run, including successful requests, while `retryAfterAt` is present only on `failed_retryable` runs. A successful retry completes the same SyncRun. Exhausted or deferred transient failures end as `failed_retryable`; terminal failures end as `failed_terminal`; neither advances `lastSuccessfulSyncAt`. Final success is conditional on the run still being `running`, so cancellation cannot be overwritten. Existing repository/SHA, commit-file, idempotency-key, and active-run database constraints remain authoritative.
+`SyncRun.attemptCount` records the total GitHub HTTP attempts made by that run, including successful requests, while `retryAfterAt` is present only on `failed_retryable` runs. A successful retry completes the same SyncRun. Exhausted or deferred transient failures end as `failed_retryable`; terminal failures end as `failed_terminal`; neither advances `lastSuccessfulSyncAt`. Final success is conditional on the run still being `running`, so cancellation cannot be overwritten. Repository/SHA, commit-file, repository/provider-PR, PR-file, linked-commit, idempotency-key, and active-run database constraints remain authoritative.
 
 ### Authenticated manual synchronization
 

@@ -78,6 +78,7 @@ model ConnectedRepository {
   project              Project                @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   gitHubConnection     GitHubConnection       @relation(fields: [gitHubConnectionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   commits              GitHubCommit[]
+  pullRequests         GitHubPullRequest[]
   syncRuns             SyncRun[]
 
   @@unique([gitHubConnectionId, providerRepositoryId])
@@ -124,27 +125,86 @@ model GitHubCommitFile {
   @@index([gitHubCommitId])
 }
 
+model GitHubPullRequest {
+  id                    String                    @id @default(uuid()) @db.Uuid
+  connectedRepositoryId String                    @db.Uuid
+  providerPullRequestId BigInt                    @db.BigInt
+  number                Int
+  title                 String
+  bodySummary           String?                   @db.VarChar(2000)
+  state                 String                    @db.VarChar(16)
+  authorLogin           String?                   @db.VarChar(255)
+  baseBranch            String                    @db.VarChar(255)
+  headBranch            String                    @db.VarChar(255)
+  providerCreatedAt     DateTime                  @db.Timestamptz(3)
+  providerUpdatedAt     DateTime                  @db.Timestamptz(3)
+  mergedAt              DateTime                  @db.Timestamptz(3)
+  mergeCommitSha        String?                   @db.VarChar(64)
+  additions             Int
+  deletions             Int
+  changedFiles          Int
+  createdAt             DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                  @default(now()) @updatedAt @db.Timestamptz(3)
+  connectedRepository   ConnectedRepository       @relation(fields: [connectedRepositoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  files                 GitHubPullRequestFile[]
+  linkedCommits         GitHubPullRequestCommit[]
+
+  @@unique([connectedRepositoryId, providerPullRequestId])
+  @@unique([connectedRepositoryId, number])
+  @@index([connectedRepositoryId, mergedAt])
+}
+
+model GitHubPullRequestFile {
+  id                  String            @id @default(uuid()) @db.Uuid
+  gitHubPullRequestId String            @db.Uuid
+  path                String
+  previousPath        String?
+  status              String            @db.VarChar(32)
+  additions           Int
+  deletions           Int
+  changes             Int
+  createdAt           DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime          @default(now()) @updatedAt @db.Timestamptz(3)
+  gitHubPullRequest   GitHubPullRequest @relation(fields: [gitHubPullRequestId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([gitHubPullRequestId, path])
+  @@index([gitHubPullRequestId])
+}
+
+model GitHubPullRequestCommit {
+  id                  String            @id @default(uuid()) @db.Uuid
+  gitHubPullRequestId String            @db.Uuid
+  sha                 String            @db.VarChar(64)
+  createdAt           DateTime          @default(now()) @db.Timestamptz(3)
+  gitHubPullRequest   GitHubPullRequest @relation(fields: [gitHubPullRequestId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([gitHubPullRequestId, sha])
+  @@index([gitHubPullRequestId])
+}
+
 model SyncRun {
-  id                    String              @id @default(uuid()) @db.Uuid
-  connectedRepositoryId String              @db.Uuid
-  status                SyncRunStatus       @default(queued)
-  idempotencyKey        String              @db.VarChar(64)
-  cursorVersion         Int                 @default(1)
-  windowStart           DateTime            @db.Timestamptz(3)
-  windowEnd             DateTime            @db.Timestamptz(3)
-  startedAt             DateTime?           @db.Timestamptz(3)
-  finishedAt            DateTime?           @db.Timestamptz(3)
-  commitsDiscovered     Int                 @default(0)
-  commitsInserted       Int                 @default(0)
-  attemptCount          Int                 @default(0)
-  workerAttemptCount    Int                 @default(0)
-  retryAfterAt          DateTime?           @db.Timestamptz(3)
-  leaseToken            String?             @db.Uuid
-  leaseExpiresAt        DateTime?           @db.Timestamptz(3)
-  failureCode           String?             @db.VarChar(64)
-  createdAt             DateTime            @default(now()) @db.Timestamptz(3)
-  updatedAt             DateTime            @default(now()) @updatedAt @db.Timestamptz(3)
-  connectedRepository   ConnectedRepository @relation(fields: [connectedRepositoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  id                     String              @id @default(uuid()) @db.Uuid
+  connectedRepositoryId  String              @db.Uuid
+  status                 SyncRunStatus       @default(queued)
+  idempotencyKey         String              @db.VarChar(64)
+  cursorVersion          Int                 @default(1)
+  windowStart            DateTime            @db.Timestamptz(3)
+  windowEnd              DateTime            @db.Timestamptz(3)
+  startedAt              DateTime?           @db.Timestamptz(3)
+  finishedAt             DateTime?           @db.Timestamptz(3)
+  commitsDiscovered      Int                 @default(0)
+  commitsInserted        Int                 @default(0)
+  pullRequestsDiscovered Int                 @default(0)
+  pullRequestsInserted   Int                 @default(0)
+  attemptCount           Int                 @default(0)
+  workerAttemptCount     Int                 @default(0)
+  retryAfterAt           DateTime?           @db.Timestamptz(3)
+  leaseToken             String?             @db.Uuid
+  leaseExpiresAt         DateTime?           @db.Timestamptz(3)
+  failureCode            String?             @db.VarChar(64)
+  createdAt              DateTime            @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime            @default(now()) @updatedAt @db.Timestamptz(3)
+  connectedRepository    ConnectedRepository @relation(fields: [connectedRepositoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([connectedRepositoryId, idempotencyKey])
   @@index([connectedRepositoryId, createdAt])

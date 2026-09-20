@@ -16,6 +16,7 @@ import {
 import type {
   AuthorizedGitHubRepository,
   GitHubCommitEvidence,
+  GitHubPullRequestEvidence,
 } from "./github.types";
 
 const repositoryId = "123e4567-e89b-42d3-a456-426614174000";
@@ -59,6 +60,40 @@ function evidence(sha: string): GitHubCommitEvidence {
   };
 }
 
+function pullRequestEvidence(
+  providerPullRequestId = 70_001n,
+  number = 7
+): GitHubPullRequestEvidence {
+  return {
+    additions: 8,
+    authorLogin: "synthetic-pr-author",
+    baseBranch: "main",
+    bodySummary: "Synthetic bounded body summary",
+    changedFiles: 1,
+    commitShas: [firstSha],
+    deletions: 3,
+    files: [
+      {
+        additions: 8,
+        changes: 11,
+        deletions: 3,
+        path: "src/synthetic-pr-file.ts",
+        previousPath: null,
+        status: "modified",
+      },
+    ],
+    headBranch: "synthetic-feature",
+    mergeCommitSha: secondSha,
+    mergedAt: new Date("2026-09-18T11:00:00.000Z"),
+    number,
+    providerCreatedAt: new Date("2026-09-17T10:00:00.000Z"),
+    providerPullRequestId,
+    providerUpdatedAt: new Date("2026-09-18T11:01:00.000Z"),
+    state: "closed",
+    title: "Synthetic merged pull request",
+  };
+}
+
 function harness(options: {
   readonly connectedRepositoryId?: string;
   readonly lastSuccessfulSyncAt?: Date | null;
@@ -86,6 +121,18 @@ function harness(options: {
       create: vi.fn().mockResolvedValue({ id: "commit-record-id" }),
       updateMany: vi.fn().mockResolvedValue({ count: 0 }),
     },
+    gitHubPullRequest: {
+      findMany: vi.fn().mockResolvedValue([]),
+      upsert: vi.fn().mockResolvedValue({ id: "pull-request-record-id" }),
+    },
+    gitHubPullRequestFile: {
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+      upsert: vi.fn().mockResolvedValue({ id: "pull-request-file-record-id" }),
+    },
+    gitHubPullRequestCommit: {
+      createMany: vi.fn().mockResolvedValue({ count: 0 }),
+      deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+    },
     $transaction: vi.fn(),
   };
   prisma.$transaction.mockImplementation(
@@ -105,6 +152,10 @@ function harness(options: {
         attemptCount: 2,
         commits: [evidence(firstSha)],
       }),
+    listMergedPullRequests: vi.fn().mockResolvedValue({
+      attemptCount: 0,
+      pullRequests: [],
+    }),
   };
   const logger = {
     info: vi.fn(),
@@ -239,6 +290,8 @@ describe("GitHubCommitSyncService", () => {
         finishedAt: new Date("2026-09-18T12:02:00.000Z"),
         commitsDiscovered: 1,
         commitsInserted: 1,
+        pullRequestsDiscovered: 0,
+        pullRequestsInserted: 0,
         attemptCount: 5,
         retryAfterAt: null,
         failureCode: null,
@@ -250,7 +303,7 @@ describe("GitHubCommitSyncService", () => {
   });
 
   it("uses the PDR 30-day boundary for an initial synchronization", async () => {
-    const { prisma, service } = harness();
+    const { github, prisma, service } = harness();
 
     const result = await service.synchronize(repositoryId);
     expect(result.windowEnd.getTime() - result.windowStart.getTime()).toBe(
@@ -258,6 +311,11 @@ describe("GitHubCommitSyncService", () => {
     );
     expect(prisma.syncRun.create.mock.calls[0]?.[0].data.windowStart).toEqual(
       result.windowStart
+    );
+    expect(github.listMergedPullRequests).toHaveBeenCalledWith(
+      42n,
+      providerRepository,
+      { since: result.windowStart, until: result.windowEnd }
     );
   });
 
@@ -273,6 +331,11 @@ describe("GitHubCommitSyncService", () => {
     expect(
       github.listRepositoryCommitSummaries.mock.calls[0]?.[2].until
     ).toEqual(result.windowEnd);
+    expect(github.listMergedPullRequests).toHaveBeenCalledWith(
+      42n,
+      providerRepository,
+      { since: result.windowStart, until: result.windowEnd }
+    );
   });
 
   it("re-reads an overlap without duplicating commits or file rows", async () => {
@@ -422,6 +485,8 @@ describe("GitHubCommitSyncService", () => {
         finishedAt: new Date("2026-09-18T12:02:00.000Z"),
         commitsDiscovered: 0,
         commitsInserted: 0,
+        pullRequestsDiscovered: 0,
+        pullRequestsInserted: 0,
         attemptCount: 3,
         retryAfterAt: null,
         failureCode: "GITHUB_PROVIDER_UNAVAILABLE",
@@ -644,6 +709,8 @@ describe("GitHubCommitSyncService", () => {
       attemptCount: 2,
       commitsDiscovered: 0,
       commitsInserted: 0,
+      pullRequestsDiscovered: 0,
+      pullRequestsInserted: 0,
       startedAt: new Date("2026-09-20T11:59:00.000Z"),
       windowStart: new Date("2026-08-21T12:00:00.000Z"),
       windowEnd: new Date("2026-09-20T12:00:00.000Z"),
@@ -726,5 +793,181 @@ describe("GitHubCommitSyncService", () => {
       "credential-bearing-internal-detail"
     );
     expect(prisma.syncRun.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("GitHubCommitSyncService combined commit and pull-request ingestion", () => {
+  it("persists merged PR evidence and advances the boundary only after both stages succeed", async () => {
+    const { github, logger, prisma, service } = harness();
+    const pullRequest = pullRequestEvidence();
+    github.listMergedPullRequests.mockResolvedValue({
+      attemptCount: 4,
+      pullRequests: [pullRequest],
+    });
+
+    const result = await service.synchronize(repositoryId);
+
+    expect(result).toMatchObject({
+      attemptCount: 9,
+      commitsDiscovered: 1,
+      commitsInserted: 1,
+      pullRequestsDiscovered: 1,
+      pullRequestsInserted: 1,
+      status: "succeeded",
+    });
+    expect(prisma.gitHubPullRequest.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          connectedRepositoryId_providerPullRequestId: {
+            connectedRepositoryId: repositoryId,
+            providerPullRequestId: pullRequest.providerPullRequestId,
+          },
+        },
+        create: expect.objectContaining({
+          connectedRepositoryId: repositoryId,
+          title: pullRequest.title,
+          bodySummary: pullRequest.bodySummary,
+        }),
+      })
+    );
+    expect(prisma.gitHubPullRequestFile.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({
+          path: "src/synthetic-pr-file.ts",
+        }),
+      })
+    );
+    expect(prisma.gitHubPullRequestCommit.createMany).toHaveBeenCalledWith({
+      data: [{ gitHubPullRequestId: "pull-request-record-id", sha: firstSha }],
+      skipDuplicates: true,
+    });
+    expect(prisma.syncRun.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "succeeded",
+          pullRequestsDiscovered: 1,
+          pullRequestsInserted: 1,
+        }),
+      })
+    );
+    expect(prisma.connectedRepository.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          lastSuccessfulSyncAt: new Date("2026-09-18T12:00:00.000Z"),
+        }),
+      })
+    );
+    const logs = JSON.stringify([
+      logger.info.mock.calls,
+      logger.warnEvent.mock.calls,
+      logger.errorEvent.mock.calls,
+    ]);
+    expect(logs).not.toContain(pullRequest.title);
+    expect(logs).not.toContain("src/synthetic-pr-file.ts");
+  });
+
+  it("updates overlapping PR evidence without incrementing inserted counts or duplicating child rows", async () => {
+    const { github, prisma, service } = harness();
+    const pullRequest = pullRequestEvidence();
+    github.listMergedPullRequests.mockResolvedValue({
+      attemptCount: 2,
+      pullRequests: [pullRequest],
+    });
+    prisma.gitHubPullRequest.findMany.mockResolvedValue([
+      { providerPullRequestId: pullRequest.providerPullRequestId },
+    ]);
+
+    const result = await service.synchronize(repositoryId);
+
+    expect(result).toMatchObject({
+      pullRequestsDiscovered: 1,
+      pullRequestsInserted: 0,
+    });
+    expect(prisma.gitHubPullRequest.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.gitHubPullRequestFile.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.gitHubPullRequestCommit.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skipDuplicates: true })
+    );
+  });
+
+  it("keeps committed commit evidence but fails the run and boundary when PR ingestion fails", async () => {
+    const { github, prisma, service } = harness();
+    const retryAfterAt = new Date("2026-09-18T13:00:00.000Z");
+    github.listMergedPullRequests.mockRejectedValue(
+      new GitHubIntegrationError(
+        "GITHUB_PROVIDER_UNAVAILABLE",
+        true,
+        3,
+        retryAfterAt
+      )
+    );
+
+    await expect(service.synchronize(repositoryId)).rejects.toMatchObject({
+      attemptCount: 8,
+      failureCode: "GITHUB_PROVIDER_UNAVAILABLE",
+      retryAfterAt,
+    });
+    expect(prisma.gitHubCommit.create).toHaveBeenCalledTimes(1);
+    expect(prisma.syncRun.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "failed_retryable",
+          commitsInserted: 1,
+          pullRequestsInserted: 0,
+          retryAfterAt,
+        }),
+      })
+    );
+    expect(prisma.connectedRepository.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("replays a recovered durable run without duplicating partial PR evidence", async () => {
+    const { github, prisma, service } = harness();
+    const pullRequest = pullRequestEvidence();
+    const leaseClaimId = "523e4567-e89b-42d3-a456-426614174000";
+    prisma.syncRun.findFirst.mockResolvedValue({
+      id: syncRunId,
+      attemptCount: 4,
+      commitsDiscovered: 1,
+      commitsInserted: 1,
+      pullRequestsDiscovered: 1,
+      pullRequestsInserted: 1,
+      startedAt: new Date("2026-09-18T11:58:00.000Z"),
+      windowStart: new Date("2026-08-19T12:00:00.000Z"),
+      windowEnd: new Date("2026-09-18T12:00:00.000Z"),
+      connectedRepository: {
+        id: repositoryId,
+        providerRepositoryId: 99n,
+        lastSuccessfulSyncAt: null,
+        gitHubConnection: { providerInstallationId: 42n },
+      },
+    });
+    prisma.gitHubCommit.findMany.mockResolvedValue([{ sha: firstSha }]);
+    prisma.gitHubPullRequest.findMany.mockResolvedValue([
+      { providerPullRequestId: pullRequest.providerPullRequestId },
+    ]);
+    github.getRepositoryCommitDetails.mockResolvedValue({
+      attemptCount: 0,
+      commits: [],
+    });
+    github.listMergedPullRequests.mockResolvedValue({
+      attemptCount: 4,
+      pullRequests: [pullRequest],
+    });
+
+    const result = await service.executeClaimed(syncRunId, leaseClaimId);
+
+    expect(result).toMatchObject({
+      commitsInserted: 1,
+      pullRequestsDiscovered: 1,
+      pullRequestsInserted: 1,
+      status: "succeeded",
+    });
+    expect(prisma.syncRun.create).not.toHaveBeenCalled();
+    expect(prisma.gitHubCommit.create).not.toHaveBeenCalled();
+    expect(prisma.gitHubPullRequest.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.gitHubPullRequestCommit.createMany).toHaveBeenCalledWith(
+      expect.objectContaining({ skipDuplicates: true })
+    );
   });
 });

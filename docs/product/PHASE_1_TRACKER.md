@@ -172,10 +172,32 @@ This tracker records verified repository state for Phase 1. The governing implem
 
 ## Task 1.6 — Merged Pull-Request Ingestion
 
-- [ ] persist merged pull-request metadata linked to synchronized default-branch commits
-- [ ] enforce repository-scoped provider pull-request uniqueness
-- [ ] exclude open and unmerged pull requests from the default MVP path
-- [ ] apply the same ownership, RLS, privacy, retry, and idempotency standards
+- [x] persist normalized merged pull-request metadata, changed-file metadata, and linked commit SHAs alongside synchronized default-branch evidence
+- [x] enforce repository-scoped uniqueness for immutable provider pull-request IDs and repository pull-request numbers
+- [x] exclude open and unmerged pull requests from the default MVP path
+- [x] use the same fixed 30-day initial window and incremental 24-hour overlap as commit synchronization
+- [x] run commit and pull-request ingestion in one SyncRun and advance the repository boundary only after both complete
+- [x] preserve partial evidence safely across retry and recovery without duplicating pull requests, files, or commit links
+- [x] apply the existing bounded retry, rate-limit, authorization, and provider-error policy
+- [x] enforce ownership-aware RLS reads while denying direct authenticated writes
+- [x] store no raw provider payload, source content, patch, diff, credential, or installation token
+- [x] forward migration deploy, database connectivity, and migration-status checks pass against the configured development database
+- [x] deterministic provider, migration, persistence, recovery, dashboard, and privacy tests pass
+- [x] all repository quality gates, E2E tests, and secret scans pass
+
+### Task 1.6 Design Notes
+
+- `GitHubPullRequest` stores bounded normalized metadata. The body summary is limited to 2,000 characters; changed files store paths, statuses, and numeric statistics only.
+- Pull-request identity is scoped to the connected repository by the immutable GitHub pull-request ID. The repository-local pull-request number is independently unique within the same connected repository.
+- Merged pull requests are discovered by `mergedAt` inside the same fixed SyncRun window used for commits. Detail responses are revalidated as closed, merged, and in-window before persistence.
+- Linked commit SHAs use a normalized child table rather than a foreign key to `GitHubCommit`, because squash and rebase workflows can legitimately produce provider-linked SHAs that are not retained as synchronized default-branch commit rows.
+- Commit and pull-request provider calls share one SyncRun, provider retry policy, durable worker lifecycle, and final success transaction. The successful boundary moves only when both evidence phases finish.
+- Partial commit or pull-request evidence remains intentionally idempotent after a later provider failure. Durable retry and expired-lease recovery replay the same fixed window without duplicate rows.
+- Real-provider commit and pull-request synchronization remains reserved for Task 1.7 live verification.
+
+### Task Status
+
+- [x] Task 1.6 VERIFIED COMPLETE
 
 ## Task 1.7 — Live Verification & Phase Exit
 
@@ -193,5 +215,6 @@ This tracker records verified repository state for Phase 1. The governing implem
 - [x] Task 1.3 VERIFIED COMPLETE
 - [x] Task 1.4 VERIFIED COMPLETE
 - [x] Task 1.5 VERIFIED COMPLETE
-- [x] Task 1.6 NOT STARTED
+- [x] Task 1.6 VERIFIED COMPLETE
+- [x] Task 1.7 NOT STARTED
 - [x] Phase 2 NOT STARTED

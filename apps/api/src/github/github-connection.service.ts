@@ -91,6 +91,8 @@ export class GitHubConnectionService {
                 finishedAt: true,
                 commitsDiscovered: true,
                 commitsInserted: true,
+                pullRequestsDiscovered: true,
+                pullRequestsInserted: true,
                 attemptCount: true,
                 retryAfterAt: true,
                 failureCode: true,
@@ -129,6 +131,12 @@ export class GitHubConnectionService {
                       project.connectedRepository.syncRuns[0].commitsDiscovered,
                     commitsInserted:
                       project.connectedRepository.syncRuns[0].commitsInserted,
+                    pullRequestsDiscovered:
+                      project.connectedRepository.syncRuns[0]
+                        .pullRequestsDiscovered,
+                    pullRequestsInserted:
+                      project.connectedRepository.syncRuns[0]
+                        .pullRequestsInserted,
                     attemptCount:
                       project.connectedRepository.syncRuns[0].attemptCount,
                     retryAfterAt:

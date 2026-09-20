@@ -63,3 +63,37 @@ export interface GitHubCommitDetailResult {
   readonly attemptCount: number;
   readonly commits: readonly GitHubCommitEvidence[];
 }
+
+export interface GitHubPullRequestFileEvidence {
+  readonly additions: number;
+  readonly changes: number;
+  readonly deletions: number;
+  readonly path: string;
+  readonly previousPath: string | null;
+  readonly status: string;
+}
+
+export interface GitHubPullRequestEvidence {
+  readonly additions: number;
+  readonly authorLogin: string | null;
+  readonly baseBranch: string;
+  readonly bodySummary: string | null;
+  readonly changedFiles: number;
+  readonly commitShas: readonly string[];
+  readonly deletions: number;
+  readonly files: readonly GitHubPullRequestFileEvidence[];
+  readonly headBranch: string;
+  readonly mergeCommitSha: string | null;
+  readonly mergedAt: Date;
+  readonly number: number;
+  readonly providerCreatedAt: Date;
+  readonly providerPullRequestId: bigint;
+  readonly providerUpdatedAt: Date;
+  readonly state: "closed";
+  readonly title: string;
+}
+
+export interface GitHubPullRequestListResult {
+  readonly attemptCount: number;
+  readonly pullRequests: readonly GitHubPullRequestEvidence[];
+}

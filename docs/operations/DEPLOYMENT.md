@@ -129,6 +129,7 @@ pnpm build
 - The worker polls for queued work every five seconds, heartbeats owned leases every 30 seconds, and uses a 15-minute lease. Graceful shutdown stops new claims and waits for the active tick. Abrupt termination leaves queued work intact and makes running work recoverable after lease expiry.
 - Repository scheduling is database-gated to at most hourly per active repository and is separate from the five-second queue poll. Inactive/disconnected repositories are not scheduled or claimed.
 - This migration is not compatible with old API instances starting new SyncRuns, because every running row must carry a lease. Pause/drain old API replicas and manual sync traffic, apply the SyncRun lease migration, deploy the worker-enabled API, then resume traffic. Do not run old and new sync writers concurrently across this migration.
+- The merged pull-request migration is additive: it adds PR evidence tables and defaulted SyncRun counters without changing existing rows or grants. Apply it before deploying the combined commit-and-PR API. Existing older API replicas ignore the new structures, but only the new API can produce complete combined synchronization runs.
 
 ## Migration and controlled release procedure
 

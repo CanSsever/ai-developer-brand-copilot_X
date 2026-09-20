@@ -136,6 +136,8 @@ describe("DashboardView", () => {
         attemptCount: 5,
         commitsDiscovered: 4,
         commitsInserted: 3,
+        pullRequestsDiscovered: 2,
+        pullRequestsInserted: 2,
         failureCode: null,
         finishedAt: "2026-09-19T10:00:00.000Z",
         retryAfterAt: null,
@@ -146,7 +148,7 @@ describe("DashboardView", () => {
     });
 
     expect(screen.getByText(/Last synced:/)).toHaveTextContent(
-      "3 new commits imported."
+      "3 new commits imported. 2 merged pull requests imported."
     );
   });
 
@@ -159,6 +161,8 @@ describe("DashboardView", () => {
           attemptCount: 0,
           commitsDiscovered: 0,
           commitsInserted: 0,
+          pullRequestsDiscovered: 0,
+          pullRequestsInserted: 0,
           failureCode: null,
           finishedAt: null,
           retryAfterAt: null,
@@ -179,6 +183,8 @@ describe("DashboardView", () => {
         attemptCount: 3,
         commitsDiscovered: 0,
         commitsInserted: 0,
+        pullRequestsDiscovered: 0,
+        pullRequestsInserted: 0,
         failureCode: "GITHUB_RATE_LIMITED",
         finishedAt: "2026-09-19T10:00:00.000Z",
         retryAfterAt: "2026-09-19T11:00:00.000Z",
@@ -201,6 +207,8 @@ describe("DashboardView", () => {
         attemptCount: 1,
         commitsDiscovered: 0,
         commitsInserted: 0,
+        pullRequestsDiscovered: 0,
+        pullRequestsInserted: 0,
         failureCode: "GITHUB_AUTHORIZATION_FAILED",
         finishedAt: "2026-09-19T10:00:00.000Z",
         retryAfterAt: null,
@@ -227,6 +235,8 @@ describe("DashboardView", () => {
         attemptCount: 7,
         commitsDiscovered: 0,
         commitsInserted: 0,
+        pullRequestsDiscovered: 0,
+        pullRequestsInserted: 0,
         failureCode: "GITHUB_SAFETY_LIMIT_EXCEEDED",
         finishedAt: "2026-09-19T10:00:00.000Z",
         retryAfterAt: null,

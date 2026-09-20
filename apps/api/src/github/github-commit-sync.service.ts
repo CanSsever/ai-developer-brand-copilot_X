@@ -10,7 +10,10 @@ import {
   type GitHubIntegrationFailureCode,
 } from "./github-api.service";
 import { GITHUB_SYNC_CLOCK } from "./github.tokens";
-import type { GitHubCommitEvidence } from "./github.types";
+import type {
+  GitHubCommitEvidence,
+  GitHubPullRequestEvidence,
+} from "./github.types";
 
 const hourMs = 60 * 60 * 1_000;
 export const initialSyncLookbackMs = 30 * 24 * hourMs;
@@ -27,6 +30,8 @@ export interface GitHubCommitSyncResult {
   readonly attemptCount: number;
   readonly commitsDiscovered: number;
   readonly commitsInserted: number;
+  readonly pullRequestsDiscovered: number;
+  readonly pullRequestsInserted: number;
   readonly status: "succeeded";
   readonly syncRunId: string;
   readonly windowEnd: Date;
@@ -50,6 +55,8 @@ interface PreparedSyncRun {
   readonly attemptCount: number;
   readonly commitsDiscovered: number;
   readonly commitsInserted: number;
+  readonly pullRequestsDiscovered: number;
+  readonly pullRequestsInserted: number;
   readonly leaseToken: string;
   readonly repository: SyncRepository;
   readonly startedAt: Date;
@@ -138,6 +145,8 @@ export class GitHubCommitSyncService {
       attemptCount: 0,
       commitsDiscovered: 0,
       commitsInserted: 0,
+      pullRequestsDiscovered: 0,
+      pullRequestsInserted: 0,
       leaseToken,
       startedAt,
     });
@@ -176,6 +185,8 @@ export class GitHubCommitSyncService {
         attemptCount: true,
         commitsDiscovered: true,
         commitsInserted: true,
+        pullRequestsDiscovered: true,
+        pullRequestsInserted: true,
         startedAt: true,
         windowEnd: true,
         windowStart: true,
@@ -201,6 +212,8 @@ export class GitHubCommitSyncService {
       attemptCount: claimed.attemptCount,
       commitsDiscovered: claimed.commitsDiscovered,
       commitsInserted: claimed.commitsInserted,
+      pullRequestsDiscovered: claimed.pullRequestsDiscovered,
+      pullRequestsInserted: claimed.pullRequestsInserted,
       leaseToken,
       repository: claimed.connectedRepository,
       startedAt: claimed.startedAt,
@@ -219,6 +232,8 @@ export class GitHubCommitSyncService {
       | "attemptCount"
       | "commitsDiscovered"
       | "commitsInserted"
+      | "pullRequestsDiscovered"
+      | "pullRequestsInserted"
       | "leaseToken"
       | "startedAt"
     >
@@ -291,6 +306,8 @@ export class GitHubCommitSyncService {
     } = prepared;
     let commitsDiscovered = prepared.commitsDiscovered;
     let commitsInserted = prepared.commitsInserted;
+    let pullRequestsDiscovered = prepared.pullRequestsDiscovered;
+    let pullRequestsInserted = prepared.pullRequestsInserted;
     let attemptCount = prepared.attemptCount;
     this.logger.info("github_commit_sync_started", {
       syncRunId,
@@ -308,7 +325,10 @@ export class GitHubCommitSyncService {
       const discoveredShas = [
         ...new Set(listed.commits.map((commit) => commit.sha)),
       ];
-      commitsDiscovered = discoveredShas.length;
+      commitsDiscovered = Math.max(
+        commitsDiscovered,
+        discoveredShas.length
+      );
 
       const existing =
         discoveredShas.length === 0
@@ -355,6 +375,51 @@ export class GitHubCommitSyncService {
         windowEnd
       );
 
+      const pullRequestResult = await this.github.listMergedPullRequests(
+        repository.gitHubConnection.providerInstallationId,
+        listed.repository,
+        { since: windowStart, until: windowEnd }
+      );
+      attemptCount += pullRequestResult.attemptCount;
+      const providerIds = pullRequestResult.pullRequests.map(
+        (pullRequest) => pullRequest.providerPullRequestId
+      );
+      const numbers = pullRequestResult.pullRequests.map(
+        (pullRequest) => pullRequest.number
+      );
+      if (
+        new Set(providerIds).size !== providerIds.length ||
+        new Set(numbers).size !== numbers.length
+      ) {
+        throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+      }
+      pullRequestsDiscovered = Math.max(
+        pullRequestsDiscovered,
+        pullRequestResult.pullRequests.length
+      );
+
+      const existingPullRequests =
+        providerIds.length === 0
+          ? []
+          : await this.prisma.gitHubPullRequest.findMany({
+              where: {
+                connectedRepositoryId: repository.id,
+                providerPullRequestId: { in: providerIds },
+              },
+              select: { providerPullRequestId: true },
+            });
+      const existingProviderIds = new Set(
+        existingPullRequests.map(
+          (pullRequest) => pullRequest.providerPullRequestId
+        )
+      );
+      for (const pullRequest of pullRequestResult.pullRequests) {
+        await this.persistPullRequest(repository.id, pullRequest);
+        if (!existingProviderIds.has(pullRequest.providerPullRequestId)) {
+          pullRequestsInserted += 1;
+        }
+      }
+
       const finishedAt = this.clock();
       await this.prisma.$transaction(async (transaction) => {
         const completed = await transaction.syncRun.updateMany({
@@ -368,6 +433,8 @@ export class GitHubCommitSyncService {
             finishedAt,
             commitsDiscovered,
             commitsInserted,
+            pullRequestsDiscovered,
+            pullRequestsInserted,
             attemptCount,
             retryAfterAt: null,
             failureCode: null,
@@ -404,12 +471,16 @@ export class GitHubCommitSyncService {
         attemptCount,
         commitsDiscovered,
         commitsInserted,
+        pullRequestsDiscovered,
+        pullRequestsInserted,
         syncRunId,
       });
       return {
         attemptCount,
         commitsDiscovered,
         commitsInserted,
+        pullRequestsDiscovered,
+        pullRequestsInserted,
         status: "succeeded",
         syncRunId,
         windowEnd,
@@ -434,6 +505,8 @@ export class GitHubCommitSyncService {
             finishedAt,
             commitsDiscovered,
             commitsInserted,
+            pullRequestsDiscovered,
+            pullRequestsInserted,
             attemptCount,
             retryAfterAt: failure.retryable
               ? failure.retryAfterAt
@@ -491,6 +564,98 @@ export class GitHubCommitSyncService {
           })),
         },
       },
+    });
+  }
+
+  private async persistPullRequest(
+    connectedRepositoryId: string,
+    evidence: GitHubPullRequestEvidence
+  ): Promise<void> {
+    await this.prisma.$transaction(async (transaction) => {
+      const data = {
+        number: evidence.number,
+        title: evidence.title,
+        bodySummary: evidence.bodySummary,
+        state: evidence.state,
+        authorLogin: evidence.authorLogin,
+        baseBranch: evidence.baseBranch,
+        headBranch: evidence.headBranch,
+        providerCreatedAt: evidence.providerCreatedAt,
+        providerUpdatedAt: evidence.providerUpdatedAt,
+        mergedAt: evidence.mergedAt,
+        mergeCommitSha: evidence.mergeCommitSha,
+        additions: evidence.additions,
+        deletions: evidence.deletions,
+        changedFiles: evidence.changedFiles,
+      };
+      const pullRequest = await transaction.gitHubPullRequest.upsert({
+        where: {
+          connectedRepositoryId_providerPullRequestId: {
+            connectedRepositoryId,
+            providerPullRequestId: evidence.providerPullRequestId,
+          },
+        },
+        create: {
+          connectedRepositoryId,
+          providerPullRequestId: evidence.providerPullRequestId,
+          ...data,
+        },
+        update: data,
+        select: { id: true },
+      });
+
+      for (const file of evidence.files) {
+        await transaction.gitHubPullRequestFile.upsert({
+          where: {
+            gitHubPullRequestId_path: {
+              gitHubPullRequestId: pullRequest.id,
+              path: file.path,
+            },
+          },
+          create: {
+            gitHubPullRequestId: pullRequest.id,
+            path: file.path,
+            previousPath: file.previousPath,
+            status: file.status,
+            additions: file.additions,
+            deletions: file.deletions,
+            changes: file.changes,
+          },
+          update: {
+            previousPath: file.previousPath,
+            status: file.status,
+            additions: file.additions,
+            deletions: file.deletions,
+            changes: file.changes,
+          },
+        });
+      }
+      await transaction.gitHubPullRequestFile.deleteMany({
+        where: {
+          gitHubPullRequestId: pullRequest.id,
+          ...(evidence.files.length > 0
+            ? { path: { notIn: evidence.files.map((file) => file.path) } }
+            : {}),
+        },
+      });
+
+      if (evidence.commitShas.length > 0) {
+        await transaction.gitHubPullRequestCommit.createMany({
+          data: evidence.commitShas.map((sha) => ({
+            gitHubPullRequestId: pullRequest.id,
+            sha,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      await transaction.gitHubPullRequestCommit.deleteMany({
+        where: {
+          gitHubPullRequestId: pullRequest.id,
+          ...(evidence.commitShas.length > 0
+            ? { sha: { notIn: [...evidence.commitShas] } }
+            : {}),
+        },
+      });
     });
   }
 

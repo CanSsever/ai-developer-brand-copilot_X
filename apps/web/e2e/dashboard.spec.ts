@@ -110,7 +110,11 @@ test("manually syncs a connected repository and shows safe success status", asyn
   await expect(page.getByText("Sync in progress.")).toBeVisible();
 
   await page.reload();
-  await expect(page.getByText(/3 new commits imported/)).toBeVisible();
+  await expect(
+    page.getByText(
+      /3 new commits imported\. 1 merged pull request imported\./
+    )
+  ).toBeVisible();
 });
 
 test("shows safe manual-sync and retry-after failure feedback", async ({

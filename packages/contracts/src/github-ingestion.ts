@@ -10,6 +10,8 @@ export interface SyncRunSummary {
   readonly attemptCount: number;
   readonly commitsDiscovered: number;
   readonly commitsInserted: number;
+  readonly pullRequestsDiscovered: number;
+  readonly pullRequestsInserted: number;
   readonly failureCode: string | null;
   readonly finishedAt: string | null;
   readonly retryAfterAt: string | null;
