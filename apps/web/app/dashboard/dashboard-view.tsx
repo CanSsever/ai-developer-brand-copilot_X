@@ -1,10 +1,12 @@
 import type {
   GitHubConnectionSummary,
   ProjectSummary,
+  RepositorySyncSummary,
 } from "@developer-brand-copilot/contracts";
 import Link from "next/link";
 
 import { connectionErrorMessage, connectionStatusMessage } from "../github/feedback";
+import { SyncButton } from "./sync-button";
 
 interface DashboardViewProps {
   readonly connections: readonly GitHubConnectionSummary[];
@@ -15,6 +17,7 @@ interface DashboardViewProps {
   readonly selectedProjectId?: string | undefined;
   readonly signOutAction: () => Promise<never>;
   readonly status?: string | undefined;
+  readonly syncProjectAction: (formData: FormData) => Promise<never>;
 }
 
 function projectLabel(index: number): string {
@@ -39,6 +42,54 @@ function projectConnectionAction(
   return { href: "/github/connect", label: "Connect GitHub" };
 }
 
+function formatSyncTime(value: string): string {
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    month: "short",
+    timeZone: "UTC",
+    timeZoneName: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+export function syncStatusMessage(sync: RepositorySyncSummary): string {
+  const latest = sync.latestRun;
+  if (!latest) return "GitHub activity has not been synced yet.";
+
+  switch (latest.status) {
+    case "queued":
+    case "running":
+      return "Sync in progress.";
+    case "succeeded": {
+      const timestamp =
+        sync.lastSuccessfulSyncAt ?? latest.finishedAt ?? latest.startedAt;
+      const imported =
+        latest.commitsInserted === 1
+          ? "1 new commit imported."
+          : `${latest.commitsInserted} new commits imported.`;
+      return timestamp
+        ? `Last synced: ${formatSyncTime(timestamp)}. ${imported}`
+        : imported;
+    }
+    case "failed_retryable":
+      return latest.retryAfterAt
+        ? `GitHub is temporarily unavailable. Retry after ${formatSyncTime(latest.retryAfterAt)}.`
+        : "GitHub is temporarily unavailable. Try again later.";
+    case "failed_terminal":
+      if (latest.failureCode === "GITHUB_SAFETY_LIMIT_EXCEEDED") {
+        return "The import is incomplete because GitHub history exceeds the current 500-commit limit.";
+      }
+      return latest.failureCode === "GITHUB_AUTHORIZATION_FAILED" ||
+        latest.failureCode === "CONNECTED_REPOSITORY_NOT_AVAILABLE"
+        ? "GitHub access needs attention. Review the repository connection."
+        : "GitHub activity synchronization could not be completed.";
+    case "cancelled":
+      return "The previous synchronization was cancelled.";
+  }
+}
+
 export function DashboardView({
   connections,
   createProjectAction,
@@ -48,6 +99,7 @@ export function DashboardView({
   selectedProjectId,
   signOutAction,
   status,
+  syncProjectAction,
 }: DashboardViewProps) {
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? projects[0];
@@ -130,6 +182,9 @@ export function DashboardView({
                       Default branch: {project.connectedRepository.defaultBranch}
                       {project.connectedRepository.isPrivate ? " · Private" : " · Public"}
                     </p>
+                    <p aria-live="polite" className="mt-2 text-sm">
+                      {syncStatusMessage(project.connectedRepository.sync)}
+                    </p>
                   </div>
                 ) : connections.length > 0 ? (
                   <p className="mt-4">GitHub App installed; no repository is connected to this Project.</p>
@@ -144,6 +199,12 @@ export function DashboardView({
                     </Link>
                   ) : null}
                   <Link href={action.href}>{action.label}</Link>
+                  {project.connectedRepository ? (
+                    <form action={syncProjectAction}>
+                      <input name="projectId" type="hidden" value={project.id} />
+                      <SyncButton />
+                    </form>
+                  ) : null}
                 </div>
               </li>
             );
@@ -159,7 +220,9 @@ export function DashboardView({
             {` · ${selectedProject.timezone}`}
           </p>
           <p className="mt-2 text-sm text-gray-600">
-            GitHub activity synchronization is not available in Phase 0.
+            {selectedProject.connectedRepository
+              ? "Manual GitHub activity synchronization is available for this Project."
+              : "Connect an authorized GitHub repository to synchronize activity."}
           </p>
         </section>
       ) : null}

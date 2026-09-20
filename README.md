@@ -1,6 +1,6 @@
 # AI Developer Brand Copilot
 
-This repository contains the verified Phase 0 engineering foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, the GitHub App connection foundation, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 1 is in progress: raw commit persistence and an internal incremental commit-synchronization service are implemented. User-triggered sync, background scheduling, merged pull-request ingestion, product intelligence, and AI integration are not implemented yet.
+This repository contains the verified Phase 0 engineering foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, the GitHub App connection foundation, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 1 is in progress: raw commit persistence, incremental commit synchronization, provider retry hardening, and authenticated manual synchronization are implemented. Background scheduling, merged pull-request ingestion, product intelligence, and AI integration are not implemented yet.
 
 ## Prerequisites
 
@@ -45,7 +45,7 @@ pnpm dev
 
 The web application uses `http://localhost:3000`. The API uses `http://localhost:3001`, with `GET /health` for application health, `GET /health/db` for PostgreSQL connectivity, and bearer-protected `GET /auth/me` for the current application user.
 
-Authenticated users can open `/dashboard` for the Phase 0 product shell. The server-rendered dashboard lists owned Projects, creates Projects with an IANA timezone, shows the current Project, represents GitHub App and connected-repository state, links to the existing GitHub connection flow, and provides sign-out. Unauthenticated requests are redirected to the existing sign-in shell. GitHub activity synchronization and product intelligence are not implemented in Phase 0.
+Authenticated users can open `/dashboard` for the product shell. The server-rendered dashboard lists owned Projects, creates Projects with an IANA timezone, shows the current Project, represents GitHub App and connected-repository state, links to the existing GitHub connection flow, provides sign-out, and allows manual synchronization for connected repositories. Unauthenticated requests are redirected to the existing sign-in shell. Product intelligence remains unimplemented.
 
 Run an application individually:
 
@@ -195,7 +195,7 @@ This persistence layer itself exposes no API behavior. Commit fetching is perfor
 
 ### Internal incremental commit synchronization
 
-`GitHubCommitSyncService` is an internal server-side capability with no public controller or dashboard action. It loads an active `ConnectedRepository` and its installation identity from persistence, resolves the repository through its immutable provider ID, obtains short-lived installation tokens inside the existing GitHub API service, and reads commits reachable from the current default branch.
+`GitHubCommitSyncService` is the shared server-side synchronization capability. It loads an active `ConnectedRepository` and its installation identity from persistence, resolves the repository through its immutable provider ID, obtains short-lived installation tokens inside the existing GitHub API service, and reads commits reachable from the current default branch.
 
 An initial run uses one fixed 30-day window capped at 500 commits. A later run starts 24 hours before `lastSuccessfulSyncAt` and ends at one fixed captured time. Commit and file uniqueness constraints make the intentional overlap idempotent. The provider reader paginates commits and changed files within explicit limits and fails closed if the supported boundary is exceeded instead of silently truncating.
 
@@ -211,7 +211,13 @@ Each provider HTTP call has at most three attempts. Local exponential backoff st
 
 `SyncRun.attemptCount` records the total GitHub HTTP attempts made by that run, including successful requests, while `retryAfterAt` is present only on `failed_retryable` runs. A successful retry completes the same SyncRun. Exhausted or deferred transient failures end as `failed_retryable`; terminal failures end as `failed_terminal`; neither advances `lastSuccessfulSyncAt`. Final success is conditional on the run still being `running`, so cancellation cannot be overwritten. Existing repository/SHA, commit-file, idempotency-key, and active-run database constraints remain authoritative.
 
-This task does not schedule or automatically re-run failed synchronization. Manual and background orchestration remain later Phase 1 work.
+### Authenticated manual synchronization
+
+An authenticated user can start synchronization for an owned connected repository from the dashboard. `POST /projects/:projectId/sync-runs` verifies the complete User-to-Project-to-ConnectedRepository ownership chain, resolves repository identity only from persistence, applies the existing one-active-run database gate, and reuses `GitHubCommitSyncService`. Unknown and cross-user resources use the same safe not-found behavior.
+
+The endpoint returns `202 Accepted` with only a SyncRun identifier and `queued` status after the queued record has been durably created. Work then continues asynchronously in the current API process. The dashboard reads only the latest safe SyncRun summary and presents human-readable never-synced, queued/running, success, incomplete/import-limit, retry timing, access-attention, cancellation, and terminal-failure states; it never receives provider payloads, raw errors, credentials, commit messages, or file paths.
+
+Manual starts use a durable 60-second per-repository minimum interval and honor a persisted future `retryAfterAt`. These controls do not schedule retries. This process-local asynchronous handoff is the deliberately small Task 1.4 implementation: it is not a durable queue, worker, scheduler, cron job, webhook, or automatic monitor. Task 1.5 owns background execution and recovery across process termination, and Task 1.7 owns real GitHub ingestion verification.
 
 ## API observability baseline
 

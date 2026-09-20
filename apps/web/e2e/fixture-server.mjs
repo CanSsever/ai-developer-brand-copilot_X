@@ -9,6 +9,7 @@ const siteOrigin = "http://localhost:3100";
 const userId = "123e4567-e89b-42d3-a456-426614174000";
 const projectId = "323e4567-e89b-42d3-a456-426614174000";
 const connectionId = "423e4567-e89b-42d3-a456-426614174000";
+const syncRunId = "523e4567-e89b-42d3-a456-426614174000";
 
 function base64Url(value) {
   return Buffer.from(value).toString("base64url");
@@ -54,24 +55,46 @@ function configureFixture(state) {
   projects = [];
   connections = [];
 
-  if (["project", "installed", "connected"].includes(state)) {
+  const connectedStates = [
+    "connected",
+    "connected-retryable",
+    "connected-sync-error",
+  ];
+  if (["project", "installed", ...connectedStates].includes(state)) {
     projects.push({
       id: projectId,
       timezone: "Europe/Berlin",
       connectedRepository:
-        state === "connected"
+        connectedStates.includes(state)
           ? {
               connectionId,
               defaultBranch: "main",
               fullName: "fixture-owner/fixture-repository",
               isPrivate: true,
               status: "active",
+              sync:
+                state === "connected-retryable"
+                  ? {
+                      lastSuccessfulSyncAt: null,
+                      latestRun: {
+                        attemptCount: 3,
+                        commitsDiscovered: 0,
+                        commitsInserted: 0,
+                        failureCode: "GITHUB_RATE_LIMITED",
+                        finishedAt: "2026-09-19T10:00:00.000Z",
+                        retryAfterAt: "2026-09-19T11:00:00.000Z",
+                        startedAt: "2026-09-19T09:59:00.000Z",
+                        status: "failed_retryable",
+                        syncRunId,
+                      },
+                    }
+                  : { lastSuccessfulSyncAt: null, latestRun: null },
             }
           : null,
     });
   }
 
-  if (["installed", "connected"].includes(state)) {
+  if (["installed", ...connectedStates].includes(state)) {
     connections.push({
       id: connectionId,
       accountLogin: "fixture-account",
@@ -153,7 +176,15 @@ const apiServer = createServer(async (request, response) => {
 
   if (request.method === "POST" && url.pathname === "/__e2e/reset") {
     const body = await readJson(request);
-    const allowedStates = ["empty", "project", "installed", "connected", "error"];
+    const allowedStates = [
+      "empty",
+      "project",
+      "installed",
+      "connected",
+      "connected-retryable",
+      "connected-sync-error",
+      "error",
+    ];
     if (!allowedStates.includes(body.state)) {
       return sendJson(response, 400, { message: "invalid fixture state" });
     }
@@ -189,6 +220,40 @@ const apiServer = createServer(async (request, response) => {
 
   if (request.method === "GET" && url.pathname === "/github/connections") {
     return sendJson(response, 200, connections);
+  }
+
+  if (
+    request.method === "POST" &&
+    url.pathname === `/projects/${projectId}/sync-runs`
+  ) {
+    if (fixtureState === "connected-sync-error") {
+      return sendJson(response, 503, {
+        code: "SERVICE_UNAVAILABLE",
+        message: "GitHub synchronization is temporarily unavailable",
+      });
+    }
+    const project = projects[0];
+    if (!project?.connectedRepository) {
+      return sendJson(response, 404, {
+        code: "NOT_FOUND",
+        message: "Connected repository not found",
+      });
+    }
+    project.connectedRepository.sync = {
+      lastSuccessfulSyncAt: "2026-09-19T10:00:00.000Z",
+      latestRun: {
+        attemptCount: 4,
+        commitsDiscovered: 3,
+        commitsInserted: 3,
+        failureCode: null,
+        finishedAt: "2026-09-19T10:00:00.000Z",
+        retryAfterAt: null,
+        startedAt: "2026-09-19T09:59:00.000Z",
+        status: "succeeded",
+        syncRunId,
+      },
+    };
+    return sendJson(response, 202, { status: "queued", syncRunId });
   }
 
   return sendJson(response, 404, { code: "NOT_FOUND", message: "Not found" });

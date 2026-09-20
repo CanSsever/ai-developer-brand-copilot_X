@@ -78,6 +78,8 @@ describe("GitHubConnectionService", () => {
           defaultBranch: "main",
           isPrivate: true,
           status: "active",
+          lastSuccessfulSyncAt: null,
+          syncRuns: [],
         },
       },
     ]);
@@ -92,11 +94,67 @@ describe("GitHubConnectionService", () => {
           fullName: "safe-owner/safe-repository",
           isPrivate: true,
           status: "active",
+          sync: {
+            lastSuccessfulSyncAt: null,
+            latestRun: null,
+          },
         },
       },
     ]);
     expect(prisma.project.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { userId } })
+    );
+  });
+
+  it("returns only the latest safe SyncRun summary with ISO timestamps", async () => {
+    const { prisma, service } = harness();
+    prisma.project.findMany.mockResolvedValue([
+      {
+        id: projectId,
+        timezone: "Europe/Berlin",
+        connectedRepository: {
+          gitHubConnectionId: connectionId,
+          owner: "safe-owner",
+          name: "safe-repository",
+          defaultBranch: "main",
+          isPrivate: true,
+          status: "active",
+          lastSuccessfulSyncAt: new Date("2026-09-19T10:00:00.000Z"),
+          syncRuns: [
+            {
+              id: "523e4567-e89b-42d3-a456-426614174000",
+              status: "succeeded",
+              startedAt: new Date("2026-09-19T09:59:00.000Z"),
+              finishedAt: new Date("2026-09-19T10:00:00.000Z"),
+              commitsDiscovered: 4,
+              commitsInserted: 3,
+              attemptCount: 7,
+              retryAfterAt: null,
+              failureCode: null,
+            },
+          ],
+        },
+      },
+    ]);
+
+    const result = await service.listProjects(userId);
+
+    expect(result[0]?.connectedRepository?.sync).toEqual({
+      lastSuccessfulSyncAt: "2026-09-19T10:00:00.000Z",
+      latestRun: {
+        syncRunId: "523e4567-e89b-42d3-a456-426614174000",
+        status: "succeeded",
+        startedAt: "2026-09-19T09:59:00.000Z",
+        finishedAt: "2026-09-19T10:00:00.000Z",
+        commitsDiscovered: 4,
+        commitsInserted: 3,
+        attemptCount: 7,
+        retryAfterAt: null,
+        failureCode: null,
+      },
+    });
+    expect(JSON.stringify(result)).not.toMatch(
+      /token|authorization|message|filePath|providerPayload/i
     );
   });
 

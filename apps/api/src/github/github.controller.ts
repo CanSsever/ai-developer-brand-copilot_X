@@ -3,6 +3,8 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Post,
   Query,
@@ -19,11 +21,15 @@ import { BearerAuthGuard } from "../auth/bearer-auth.guard";
 import { CurrentUser } from "../auth/current-user.decorator";
 import type { AuthenticatedUser } from "../auth/auth.types";
 import { GitHubConnectionService } from "./github-connection.service";
+import { GitHubManualSyncService } from "./github-manual-sync.service";
 
 @Controller()
 @UseGuards(BearerAuthGuard)
 export class GitHubController {
-  constructor(private readonly connections: GitHubConnectionService) {}
+  constructor(
+    private readonly connections: GitHubConnectionService,
+    private readonly manualSync: GitHubManualSyncService
+  ) {}
 
   @Get("projects")
   listProjects(@CurrentUser() user: AuthenticatedUser) {
@@ -36,6 +42,15 @@ export class GitHubController {
     @Body() body: Partial<CreateProjectRequest>
   ) {
     return this.connections.createProject(user.id, body?.timezone);
+  }
+
+  @Post("projects/:projectId/sync-runs")
+  @HttpCode(HttpStatus.ACCEPTED)
+  startSync(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param("projectId") projectId: string
+  ) {
+    return this.manualSync.start(user.id, projectId);
   }
 
   @Get("github/connections")

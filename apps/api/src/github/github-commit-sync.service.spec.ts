@@ -127,6 +127,18 @@ function harness(options: {
 }
 
 describe("GitHubCommitSyncService", () => {
+  it("acknowledges the durable queued run before provider work starts", async () => {
+    const { github, service } = harness();
+    const onQueued = vi.fn();
+
+    await service.synchronize(repositoryId, onQueued);
+
+    expect(onQueued).toHaveBeenCalledExactlyOnceWith(syncRunId);
+    expect(onQueued.mock.invocationCallOrder[0]).toBeLessThan(
+      github.listRepositoryCommitSummaries.mock.invocationCallOrder[0]!
+    );
+  });
+
   it("inserts unseen commit and file evidence, then completes the SyncRun atomically", async () => {
     const { github, logger, prisma, service } = harness();
 

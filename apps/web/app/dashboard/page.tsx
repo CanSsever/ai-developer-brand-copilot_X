@@ -8,6 +8,7 @@ import { authenticatedApiRequest, AuthenticatedApiError } from "../../lib/api/se
 import { createClient } from "../../lib/supabase/server";
 import { signOut } from "../auth/actions";
 import { createProject } from "../github/actions";
+import { startManualSync } from "./actions";
 import { DashboardView } from "./dashboard-view";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +55,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       selectedProjectId={first(query.projectId)}
       signOutAction={signOut}
       status={first(query.status)}
+      syncProjectAction={startManualSync}
     />
   );
 }

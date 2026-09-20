@@ -116,11 +116,28 @@ This tracker records verified repository state for Phase 1. The governing implem
 
 ## Task 1.4 — Manual Sync API & Dashboard Status
 
-- [ ] add the authenticated ownership-safe `/projects/:projectId/sync-runs` API surface
-- [ ] rate-limit manual synchronization per user and repository
-- [ ] acknowledge asynchronous work within the PDR target
-- [ ] show queued, running, success, partial-import, rate-limit, authorization, retry, cancellation, and terminal states safely
-- [x] Task 1.4 NOT STARTED
+- [x] add the authenticated ownership-safe `POST /projects/:projectId/sync-runs` API surface
+- [x] enforce the full authenticated User -> owned Project -> active ConnectedRepository and GitHub connection chain
+- [x] return indistinguishable not-found behavior for unknown and cross-user Projects/repositories
+- [x] reuse `GitHubCommitSyncService` and the database-backed one-active-run constraint without duplicating ingestion logic
+- [x] rate-limit manual synchronization per user and repository with a durable 60-second minimum interval and persisted provider retry timing
+- [x] return `202 Accepted` only after the SyncRun has been durably queued, then continue work asynchronously in the API process
+- [x] expose only the latest safe SyncRun summary through the existing owned-Project read model
+- [x] show never-synced, queued, running, success, incomplete/import-limit, rate-limit/retry, authorization, cancellation, and terminal states in human-readable dashboard text
+- [x] keep tokens, provider payloads, raw errors, commit messages, and file paths out of API responses, URLs, logs, and client code
+- [x] deterministic API, service, dashboard, server-action, and Playwright tests pass without real GitHub or Supabase credentials
+
+### Task 1.4 Design Notes
+
+- The browser supplies only an owned Project UUID. The API resolves the active ConnectedRepository and GitHub installation under the authenticated application user; client-supplied owner/name or provider identifiers are never trusted.
+- A successful initiation response contains only the new SyncRun identifier and `queued` status. Counters, timestamps, safe failure metadata, retry timing, and `lastSuccessfulSyncAt` are read through the Project summary after navigation/refresh.
+- The manual action uses a process-local asynchronous handoff after the durable queued row is created. It adds no queue, worker, scheduler, cron, webhook, or automatic polling. Durable background execution and recovery after process termination remain Task 1.5 scope.
+- Manual requests are protected by the existing active-run database constraint, a persistent per-repository cooldown, and persisted provider `retryAfterAt`. No automatic retry is scheduled by this task.
+- Real GitHub ingestion remains reserved for the Task 1.7 live Phase exit. Task 1.4 verification uses synthetic provider fixtures and the existing deterministic dashboard fixture server.
+
+### Task Status
+
+- [x] Task 1.4 VERIFIED COMPLETE
 
 ## Task 1.5 — Background Synchronization
 
@@ -150,5 +167,6 @@ This tracker records verified repository state for Phase 1. The governing implem
 - [x] Phase 1 IN PROGRESS
 - [x] Task 1.2 VERIFIED COMPLETE
 - [x] Task 1.3 VERIFIED COMPLETE
-- [x] Task 1.4 NOT STARTED
+- [x] Task 1.4 VERIFIED COMPLETE
+- [x] Task 1.5 NOT STARTED
 - [x] Phase 2 NOT STARTED

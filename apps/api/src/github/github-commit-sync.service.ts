@@ -98,7 +98,8 @@ export class GitHubCommitSyncService {
   ) {}
 
   async synchronize(
-    connectedRepositoryId: string
+    connectedRepositoryId: string,
+    onQueued?: (syncRunId: string) => void
   ): Promise<GitHubCommitSyncResult> {
     const repository = await this.loadRepository(connectedRepositoryId);
 
@@ -156,6 +157,7 @@ export class GitHubCommitSyncService {
       windowEnd: windowEnd.toISOString(),
       windowStart: windowStart.toISOString(),
     });
+    onQueued?.(syncRun.id);
 
     try {
       await this.prisma.syncRun.update({

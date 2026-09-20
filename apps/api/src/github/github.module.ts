@@ -5,6 +5,7 @@ import { GitHubApiService } from "./github-api.service";
 import { GitHubAppAuthService } from "./github-app-auth.service";
 import { GitHubCommitSyncService } from "./github-commit-sync.service";
 import { GitHubConnectionService } from "./github-connection.service";
+import { GitHubManualSyncService } from "./github-manual-sync.service";
 import { GitHubController } from "./github.controller";
 import {
   GITHUB_APP_CONFIG,
@@ -35,6 +36,7 @@ export class GitHubModule {
         GitHubApiService,
         GitHubCommitSyncService,
         GitHubConnectionService,
+        GitHubManualSyncService,
       ],
       exports: [GitHubCommitSyncService],
     };

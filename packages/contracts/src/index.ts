@@ -16,4 +16,9 @@ export type {
   ProjectConnectedRepositorySummary,
   ProjectSummary,
 } from "./github-connection.js";
-export type { SyncRunStatus } from "./github-ingestion.js";
+export type {
+  RepositorySyncSummary,
+  StartSyncRunResponse,
+  SyncRunStatus,
+  SyncRunSummary,
+} from "./github-ingestion.js";

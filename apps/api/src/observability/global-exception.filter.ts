@@ -32,6 +32,8 @@ function errorCode(statusCode: number): string {
       return "NOT_FOUND";
     case HttpStatus.CONFLICT:
       return "CONFLICT";
+    case HttpStatus.TOO_MANY_REQUESTS:
+      return "RATE_LIMITED";
     case HttpStatus.BAD_GATEWAY:
       return "UPSTREAM_FAILURE";
     case HttpStatus.SERVICE_UNAVAILABLE:

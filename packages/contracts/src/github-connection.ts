@@ -1,3 +1,5 @@
+import type { RepositorySyncSummary } from "./github-ingestion.js";
+
 export type GitHubConnectionStatus =
   | "active"
   | "disconnected"
@@ -15,6 +17,7 @@ export interface ProjectConnectedRepositorySummary {
   readonly fullName: string;
   readonly isPrivate: boolean;
   readonly status: GitHubConnectionStatus;
+  readonly sync: RepositorySyncSummary;
 }
 
 export interface CreateProjectRequest {

@@ -10,11 +10,20 @@ describe("GitHub connection feedback", () => {
     expect(connectionStatusMessage("repository_connected")).toBe(
       "Repository connected successfully."
     );
+    expect(connectionStatusMessage("sync_started")).toBe(
+      "GitHub activity synchronization started."
+    );
   });
 
   it("turns internal errors into safe readable feedback", () => {
     expect(connectionErrorMessage("installation_verification_failed")).toBe(
       "The GitHub App installation could not be verified."
+    );
+    expect(connectionErrorMessage("sync_in_progress")).toBe(
+      "GitHub activity synchronization is already in progress."
+    );
+    expect(connectionErrorMessage("sync_temporarily_unavailable")).toBe(
+      "GitHub is temporarily unavailable. Try again later."
     );
   });
 

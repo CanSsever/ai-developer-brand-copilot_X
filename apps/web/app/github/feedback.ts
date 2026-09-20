@@ -4,6 +4,7 @@ const statusMessages: Readonly<Record<string, string>> = {
   locally_disconnected: "The GitHub App connection was removed locally.",
   project_created: "Project created successfully.",
   repository_connected: "Repository connected successfully.",
+  sync_started: "GitHub activity synchronization started.",
 };
 
 const errorMessages: Readonly<Record<string, string>> = {
@@ -14,6 +15,16 @@ const errorMessages: Readonly<Record<string, string>> = {
   invalid_callback: "The GitHub App callback was incomplete or invalid.",
   project_creation_failed: "The Project could not be created.",
   repository_connection_failed: "The repository could not be connected.",
+  sync_access_attention:
+    "GitHub access needs attention. Review the repository connection.",
+  sync_failed: "GitHub activity synchronization could not be started.",
+  sync_in_progress: "GitHub activity synchronization is already in progress.",
+  sync_rate_limited:
+    "GitHub activity was synced recently. Try again in a moment.",
+  sync_temporarily_unavailable:
+    "GitHub is temporarily unavailable. Try again later.",
+  sync_unavailable:
+    "The connected repository is unavailable or you do not have access.",
 };
 
 export function connectionStatusMessage(value: string | undefined): string | null {

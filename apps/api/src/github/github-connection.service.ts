@@ -80,6 +80,22 @@ export class GitHubConnectionService {
             defaultBranch: true,
             isPrivate: true,
             status: true,
+            lastSuccessfulSyncAt: true,
+            syncRuns: {
+              orderBy: { createdAt: "desc" },
+              take: 1,
+              select: {
+                id: true,
+                status: true,
+                startedAt: true,
+                finishedAt: true,
+                commitsDiscovered: true,
+                commitsInserted: true,
+                attemptCount: true,
+                retryAfterAt: true,
+                failureCode: true,
+              },
+            },
           },
         },
       },
@@ -95,6 +111,34 @@ export class GitHubConnectionService {
             fullName: `${project.connectedRepository.owner}/${project.connectedRepository.name}`,
             isPrivate: project.connectedRepository.isPrivate,
             status: project.connectedRepository.status,
+            sync: {
+              lastSuccessfulSyncAt:
+                project.connectedRepository.lastSuccessfulSyncAt?.toISOString() ??
+                null,
+              latestRun: project.connectedRepository.syncRuns[0]
+                ? {
+                    syncRunId: project.connectedRepository.syncRuns[0].id,
+                    status: project.connectedRepository.syncRuns[0].status,
+                    startedAt:
+                      project.connectedRepository.syncRuns[0].startedAt?.toISOString() ??
+                      null,
+                    finishedAt:
+                      project.connectedRepository.syncRuns[0].finishedAt?.toISOString() ??
+                      null,
+                    commitsDiscovered:
+                      project.connectedRepository.syncRuns[0].commitsDiscovered,
+                    commitsInserted:
+                      project.connectedRepository.syncRuns[0].commitsInserted,
+                    attemptCount:
+                      project.connectedRepository.syncRuns[0].attemptCount,
+                    retryAfterAt:
+                      project.connectedRepository.syncRuns[0].retryAfterAt?.toISOString() ??
+                      null,
+                    failureCode:
+                      project.connectedRepository.syncRuns[0].failureCode,
+                  }
+                : null,
+            },
           }
         : null,
     }));
