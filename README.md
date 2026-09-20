@@ -145,7 +145,7 @@ GitHub App JWTs use RS256, an issued-at value adjusted for clock drift, a lifeti
 
 Persistence contains `GitHubConnection`, `ConnectedRepository`, and short-lived `GitHubConnectionAttempt` records. A User may have multiple installation connections. A Project has at most one connected repository, and a provider repository ID is unique within an installation. All new tables have RLS enabled. Authenticated database clients receive only tenant-scoped read access to safe connection metadata; writes remain server-only and API operations independently enforce User and Project ownership.
 
-Local disconnect deletes the local installation reference and cascades its connected repository records. It does not uninstall or revoke the GitHub App at GitHub; use GitHub's installation settings for provider-side revocation. No background jobs exist in this phase.
+Local disconnect deletes the local installation reference and cascades its connected repository records. It does not uninstall or revoke the GitHub App at GitHub; use GitHub's installation settings for provider-side revocation. The Phase 0 connection foundation itself introduced no background jobs; the Phase 1 PostgreSQL-backed sync worker is documented below.
 
 ### Local GitHub App registration
 
@@ -191,7 +191,7 @@ Commit identity is unique by connected repository and SHA, so an overlapping fet
 
 All three ingestion tables have RLS enabled. Authenticated database clients can select only rows that resolve through both the owned Project and GitHub connection; direct client writes are not granted. Application and future worker writes remain server-only and must retain API ownership checks.
 
-This persistence layer itself exposes no API behavior. Commit fetching is performed only by the internal service described below; manual/background synchronization, pull-request ingestion, repository-evidence APIs, `DevelopmentEvent`, and AI behavior remain unimplemented.
+This persistence layer itself exposes no API behavior. Commit fetching, manual enqueue, and durable background execution are implemented only through the server-side services described below. Pull-request ingestion, repository-evidence APIs, `DevelopmentEvent`, and AI behavior remain unimplemented.
 
 ### Internal incremental commit synchronization
 
@@ -215,9 +215,19 @@ Each provider HTTP call has at most three attempts. Local exponential backoff st
 
 An authenticated user can start synchronization for an owned connected repository from the dashboard. `POST /projects/:projectId/sync-runs` verifies the complete User-to-Project-to-ConnectedRepository ownership chain, resolves repository identity only from persistence, applies the existing one-active-run database gate, and reuses `GitHubCommitSyncService`. Unknown and cross-user resources use the same safe not-found behavior.
 
-The endpoint returns `202 Accepted` with only a SyncRun identifier and `queued` status after the queued record has been durably created. Work then continues asynchronously in the current API process. The dashboard reads only the latest safe SyncRun summary and presents human-readable never-synced, queued/running, success, incomplete/import-limit, retry timing, access-attention, cancellation, and terminal-failure states; it never receives provider payloads, raw errors, credentials, commit messages, or file paths.
+The endpoint returns `202 Accepted` with only a SyncRun identifier and `queued` status after the queued record has been durably created. It performs no GitHub network work in the request. The dashboard reads only the latest safe SyncRun summary and presents human-readable never-synced, queued/running, success, incomplete/import-limit, retry timing, access-attention, cancellation, and terminal-failure states; it never receives provider payloads, raw errors, credentials, commit messages, or file paths.
 
-Manual starts use a durable 60-second per-repository minimum interval and honor a persisted future `retryAfterAt`. These controls do not schedule retries. This process-local asynchronous handoff is the deliberately small Task 1.4 implementation: it is not a durable queue, worker, scheduler, cron job, webhook, or automatic monitor. Task 1.5 owns background execution and recovery across process termination, and Task 1.7 owns real GitHub ingestion verification.
+Manual starts use a durable 60-second per-repository minimum interval and honor a persisted future `retryAfterAt`. Real GitHub ingestion verification remains reserved for the Task 1.7 Phase exit.
+
+### Durable background synchronization
+
+The long-running NestJS API process also hosts a focused PostgreSQL-backed synchronization worker. PostgreSQL and `SyncRun` remain the queue source of truth: the worker polls every five seconds, evaluates at most 25 active repositories per scheduling pass, and atomically claims one queued or expired-lease run with `FOR UPDATE SKIP LOCKED`. The manual request and browser lifetime are therefore independent of execution. No Redis, BullMQ, external broker, separate worker deployment, webhook, or in-memory correctness state is required.
+
+A claim records an opaque UUID lease token, a 15-minute lease expiry, and a bounded worker-attempt count. A 30-second heartbeat extends the owned lease. Success and failure finalization require the same lease token, so an expired worker cannot overwrite a newer claim. After a crash, queued work remains claimable and expired running work is recovered with the same SyncRun window and idempotency key. Commit/repository uniqueness keeps recovered ingestion duplicate-safe.
+
+Retryable runs retain their safe failure metadata and become eligible no earlier than the later of the provider `retryAfterAt` or bounded exponential worker backoff. They are requeued on the same SyncRun and fixed synchronization window, with at most three worker execution attempts; exhausted work becomes terminal. If a newer manual run supersedes a waiting retry, the older run is cancelled so its older window cannot later move the repository success boundary backwards. Succeeded, terminal, and cancelled runs are never automatically claimed. Inactive/disconnected repository work is cancelled or removed by the existing cascade and cannot be claimed.
+
+Active repositories are considered for automatic synchronization at most hourly. Manual and scheduled work both use `GitHubCommitSyncService`, the same database active-run constraint, and the same idempotency rules. A terminal failure blocks automatic rescheduling until user intervention creates a new manual run. Worker polling is distinct from repository scheduling and does not call GitHub unless a durable run is successfully claimed.
 
 ## API observability baseline
 

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { Inject, Injectable } from "@nestjs/common";
 
@@ -33,6 +33,10 @@ export interface GitHubCommitSyncResult {
   readonly windowStart: Date;
 }
 
+export interface QueuedGitHubSyncRun {
+  readonly syncRunId: string;
+}
+
 interface SyncRepository {
   readonly gitHubConnection: {
     readonly providerInstallationId: bigint;
@@ -40,6 +44,18 @@ interface SyncRepository {
   readonly id: string;
   readonly lastSuccessfulSyncAt: Date | null;
   readonly providerRepositoryId: bigint;
+}
+
+interface PreparedSyncRun {
+  readonly attemptCount: number;
+  readonly commitsDiscovered: number;
+  readonly commitsInserted: number;
+  readonly leaseToken: string;
+  readonly repository: SyncRepository;
+  readonly startedAt: Date;
+  readonly syncRunId: string;
+  readonly windowEnd: Date;
+  readonly windowStart: Date;
 }
 
 export class GitHubCommitSyncError extends Error {
@@ -101,6 +117,112 @@ export class GitHubCommitSyncService {
     connectedRepositoryId: string,
     onQueued?: (syncRunId: string) => void
   ): Promise<GitHubCommitSyncResult> {
+    const queued = await this.createQueuedRun(connectedRepositoryId);
+    onQueued?.(queued.syncRunId);
+    const startedAt = this.clock();
+    const leaseToken = randomUUID();
+    const leaseExpiresAt = new Date(startedAt.getTime() + 15 * 60 * 1_000);
+    await this.prisma.syncRun.update({
+      where: { id: queued.syncRunId },
+      data: {
+        status: "running",
+        startedAt,
+        workerAttemptCount: { increment: 1 },
+        leaseToken,
+        leaseExpiresAt,
+      },
+    });
+
+    return this.executePrepared({
+      ...queued,
+      attemptCount: 0,
+      commitsDiscovered: 0,
+      commitsInserted: 0,
+      leaseToken,
+      startedAt,
+    });
+  }
+
+  async enqueue(
+    connectedRepositoryId: string,
+    windowEnd?: Date
+  ): Promise<QueuedGitHubSyncRun> {
+    const queued = await this.createQueuedRun(
+      connectedRepositoryId,
+      windowEnd
+    );
+    this.logger.info("github_commit_sync_queued", {
+      syncRunId: queued.syncRunId,
+    });
+    return { syncRunId: queued.syncRunId };
+  }
+
+  async executeClaimed(
+    syncRunId: string,
+    leaseToken: string
+  ): Promise<GitHubCommitSyncResult> {
+    const claimed = await this.prisma.syncRun.findFirst({
+      where: {
+        id: syncRunId,
+        status: "running",
+        leaseToken,
+        connectedRepository: {
+          status: "active",
+          gitHubConnection: { status: "active" },
+        },
+      },
+      select: {
+        id: true,
+        attemptCount: true,
+        commitsDiscovered: true,
+        commitsInserted: true,
+        startedAt: true,
+        windowEnd: true,
+        windowStart: true,
+        connectedRepository: {
+          select: {
+            id: true,
+            lastSuccessfulSyncAt: true,
+            providerRepositoryId: true,
+            gitHubConnection: {
+              select: { providerInstallationId: true },
+            },
+          },
+        },
+      },
+    });
+    if (!claimed?.startedAt) {
+      throw new GitHubCommitSyncError(
+        "CONNECTED_REPOSITORY_NOT_AVAILABLE"
+      );
+    }
+
+    return this.executePrepared({
+      attemptCount: claimed.attemptCount,
+      commitsDiscovered: claimed.commitsDiscovered,
+      commitsInserted: claimed.commitsInserted,
+      leaseToken,
+      repository: claimed.connectedRepository,
+      startedAt: claimed.startedAt,
+      syncRunId: claimed.id,
+      windowEnd: claimed.windowEnd,
+      windowStart: claimed.windowStart,
+    });
+  }
+
+  private async createQueuedRun(
+    connectedRepositoryId: string,
+    requestedWindowEnd?: Date
+  ): Promise<
+    Omit<
+      PreparedSyncRun,
+      | "attemptCount"
+      | "commitsDiscovered"
+      | "commitsInserted"
+      | "leaseToken"
+      | "startedAt"
+    >
+  > {
     const repository = await this.loadRepository(connectedRepositoryId);
 
     if (!repository) {
@@ -115,14 +237,13 @@ export class GitHubCommitSyncService {
       throw new GitHubCommitSyncConflictError();
     }
 
-    const windowEnd = this.clock();
+    const windowEnd = requestedWindowEnd ?? this.clock();
     const windowStart = repository.lastSuccessfulSyncAt
       ? new Date(
           repository.lastSuccessfulSyncAt.getTime() -
             incrementalSyncOverlapMs
         )
       : new Date(windowEnd.getTime() - initialSyncLookbackMs);
-    const startedAt = this.clock();
     let syncRun: { readonly id: string };
 
     try {
@@ -149,22 +270,35 @@ export class GitHubCommitSyncService {
       throw new GitHubCommitSyncError("SYNC_INTERNAL_ERROR");
     }
 
-    let commitsDiscovered = 0;
-    let commitsInserted = 0;
-    let attemptCount = 0;
-    this.logger.info("github_commit_sync_started", {
+    return {
+      repository,
       syncRunId: syncRun.id,
+      windowEnd,
+      windowStart,
+    };
+  }
+
+  private async executePrepared(
+    prepared: PreparedSyncRun
+  ): Promise<GitHubCommitSyncResult> {
+    const {
+      leaseToken,
+      repository,
+      startedAt,
+      syncRunId,
+      windowEnd,
+      windowStart,
+    } = prepared;
+    let commitsDiscovered = prepared.commitsDiscovered;
+    let commitsInserted = prepared.commitsInserted;
+    let attemptCount = prepared.attemptCount;
+    this.logger.info("github_commit_sync_started", {
+      syncRunId,
       windowEnd: windowEnd.toISOString(),
       windowStart: windowStart.toISOString(),
     });
-    onQueued?.(syncRun.id);
 
     try {
-      await this.prisma.syncRun.update({
-        where: { id: syncRun.id },
-        data: { status: "running", startedAt },
-      });
-
       const listed = await this.github.listRepositoryCommitSummaries(
         repository.gitHubConnection.providerInstallationId,
         repository.providerRepositoryId,
@@ -224,7 +358,11 @@ export class GitHubCommitSyncService {
       const finishedAt = this.clock();
       await this.prisma.$transaction(async (transaction) => {
         const completed = await transaction.syncRun.updateMany({
-          where: { id: syncRun.id, status: "running" },
+          where: {
+            id: syncRunId,
+            status: "running",
+            leaseToken,
+          },
           data: {
             status: "succeeded",
             finishedAt,
@@ -233,6 +371,8 @@ export class GitHubCommitSyncService {
             attemptCount,
             retryAfterAt: null,
             failureCode: null,
+            leaseToken: null,
+            leaseExpiresAt: null,
           },
         });
         if (completed.count !== 1) {
@@ -264,14 +404,14 @@ export class GitHubCommitSyncService {
         attemptCount,
         commitsDiscovered,
         commitsInserted,
-        syncRunId: syncRun.id,
+        syncRunId,
       });
       return {
         attemptCount,
         commitsDiscovered,
         commitsInserted,
         status: "succeeded",
-        syncRunId: syncRun.id,
+        syncRunId,
         windowEnd,
         windowStart,
       };
@@ -282,8 +422,9 @@ export class GitHubCommitSyncService {
       try {
         await this.prisma.syncRun.updateMany({
           where: {
-            id: syncRun.id,
-            status: { in: ["queued", "running"] },
+            id: syncRunId,
+            status: "running",
+            leaseToken,
           },
           data: {
             status: failure.retryable
@@ -298,19 +439,21 @@ export class GitHubCommitSyncService {
               ? failure.retryAfterAt
               : null,
             failureCode: failure.failureCode,
+            leaseToken: null,
+            leaseExpiresAt: null,
           },
         });
       } catch {
         this.logger.errorEvent("github_commit_sync_finalize_failed", {
           failureCode: "SYNC_INTERNAL_ERROR",
-          syncRunId: syncRun.id,
+          syncRunId,
         });
       }
       this.logger.errorEvent("github_commit_sync_failed", {
         attemptCount,
         failureCode: failure.failureCode,
         retryAfterAt: failure.retryAfterAt?.toISOString(),
-        syncRunId: syncRun.id,
+        syncRunId,
       });
       throw new GitHubCommitSyncError(
         failure.failureCode,

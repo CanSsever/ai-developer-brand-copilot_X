@@ -1,5 +1,4 @@
 import {
-  BadGatewayException,
   ConflictException,
   HttpException,
   NotFoundException,
@@ -35,23 +34,8 @@ function harness() {
     },
   };
   const sync = {
-    synchronize: vi.fn().mockImplementation(
-      async (
-        _connectedRepositoryId: string,
-        onQueued?: (id: string) => void
-      ) => {
-        onQueued?.(syncRunId);
-        return {
-          attemptCount: 3,
-          commitsDiscovered: 1,
-          commitsInserted: 1,
-          status: "succeeded",
-          syncRunId,
-          windowEnd: now,
-          windowStart: new Date("2026-08-20T12:00:00.000Z"),
-        };
-      }
-    ),
+    enqueue: vi.fn().mockResolvedValue({ syncRunId }),
+    synchronize: vi.fn(),
   };
   const service = new GitHubManualSyncService(
     prisma as unknown as PrismaService,
@@ -78,8 +62,8 @@ describe("GitHubManualSyncService", () => {
       },
       select: { id: true },
     });
-    expect(sync.synchronize).toHaveBeenCalledOnce();
-    expect(sync.synchronize.mock.calls[0]?.[0]).toBe(repositoryId);
+    expect(sync.enqueue).toHaveBeenCalledExactlyOnceWith(repositoryId);
+    expect(sync.synchronize).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -92,7 +76,7 @@ describe("GitHubManualSyncService", () => {
     await expect(service.start(subject, projectId)).rejects.toBeInstanceOf(
       NotFoundException
     );
-    expect(sync.synchronize).not.toHaveBeenCalled();
+    expect(sync.enqueue).not.toHaveBeenCalled();
   });
 
   it("maps an existing queued or running SyncRun to a safe conflict", async () => {
@@ -106,7 +90,7 @@ describe("GitHubManualSyncService", () => {
     await expect(service.start(userId, projectId)).rejects.toBeInstanceOf(
       ConflictException
     );
-    expect(sync.synchronize).not.toHaveBeenCalled();
+    expect(sync.enqueue).not.toHaveBeenCalled();
   });
 
   it("rate-limits rapid manual retries per owned repository", async () => {
@@ -120,7 +104,7 @@ describe("GitHubManualSyncService", () => {
     const failure = await service.start(userId, projectId).catch((error) => error);
     expect(failure).toBeInstanceOf(HttpException);
     expect((failure as HttpException).getStatus()).toBe(429);
-    expect(sync.synchronize).not.toHaveBeenCalled();
+    expect(sync.enqueue).not.toHaveBeenCalled();
   });
 
   it("does not retry before a provider retry-after boundary", async () => {
@@ -133,12 +117,12 @@ describe("GitHubManualSyncService", () => {
 
     const failure = await service.start(userId, projectId).catch((error) => error);
     expect((failure as HttpException).getStatus()).toBe(429);
-    expect(sync.synchronize).not.toHaveBeenCalled();
+    expect(sync.enqueue).not.toHaveBeenCalled();
   });
 
   it("maps the active-run database race to a safe conflict", async () => {
     const { service, sync } = harness();
-    sync.synchronize.mockRejectedValue(new GitHubCommitSyncConflictError());
+    sync.enqueue.mockRejectedValue(new GitHubCommitSyncConflictError());
 
     await expect(service.start(userId, projectId)).rejects.toBeInstanceOf(
       ConflictException
@@ -147,7 +131,7 @@ describe("GitHubManualSyncService", () => {
 
   it("maps a retryable pre-queue failure without provider internals", async () => {
     const { service, sync } = harness();
-    sync.synchronize.mockRejectedValue(
+    sync.enqueue.mockRejectedValue(
       new GitHubCommitSyncError("GITHUB_PROVIDER_UNAVAILABLE", 3)
     );
 
@@ -156,14 +140,14 @@ describe("GitHubManualSyncService", () => {
     );
   });
 
-  it("maps a terminal pre-queue provider failure to safe access guidance", async () => {
+  it("maps an unexpected enqueue failure without exposing internals", async () => {
     const { service, sync } = harness();
-    sync.synchronize.mockRejectedValue(
+    sync.enqueue.mockRejectedValue(
       new GitHubCommitSyncError("GITHUB_AUTHORIZATION_FAILED", 1)
     );
 
     await expect(service.start(userId, projectId)).rejects.toBeInstanceOf(
-      BadGatewayException
+      ServiceUnavailableException
     );
   });
 

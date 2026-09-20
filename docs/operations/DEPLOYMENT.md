@@ -11,7 +11,7 @@ The PDR selects Vercel for the Next.js web application and container-based hosti
 | Component | Deployment model | State and data responsibility |
 | --- | --- | --- |
 | `apps/web` | Vercel, built from the pnpm monorepo | Stateless Next.js application; owns no database credentials or GitHub App secrets |
-| `apps/api` | Long-running Node.js 22 container | Stateless NestJS API; owns server-only database and GitHub App configuration |
+| `apps/api` | Long-running Node.js 22 container | NestJS API plus PostgreSQL-backed sync worker; owns server-only database and GitHub App configuration, while durable work state remains in PostgreSQL |
 | Supabase | One isolated project per deployed environment | PostgreSQL, Auth configuration, publishable key, database backups, and RLS |
 | GitHub OAuth App | Separate registration per deployed environment | User sign-in callback to Supabase Auth |
 | GitHub App | Separate registration per deployed environment | Repository authorization callback to the web application |
@@ -124,6 +124,11 @@ pnpm build
 - Start with `pnpm --filter @developer-brand-copilot/api start` or the equivalent `node dist/main.js` from `apps/api`.
 - Run as a non-root user where the platform permits it, use a read-only filesystem except for platform-required temporary paths, and inject secrets at runtime rather than baking them into an image layer.
 - Configure the platform health probe to call `GET /health`. Use `GET /health/db` as a database-readiness diagnostic, not as a high-frequency liveness probe.
+- The same API process hosts the durable GitHub sync worker. Keep at least one long-running API replica active; serverless request-only execution is not compatible with this worker lifecycle.
+- Multiple API replicas are supported. PostgreSQL `FOR UPDATE SKIP LOCKED`, one-active-run-per-repository uniqueness, and lease tokens prevent authoritative duplicate claims/finalization.
+- The worker polls for queued work every five seconds, heartbeats owned leases every 30 seconds, and uses a 15-minute lease. Graceful shutdown stops new claims and waits for the active tick. Abrupt termination leaves queued work intact and makes running work recoverable after lease expiry.
+- Repository scheduling is database-gated to at most hourly per active repository and is separate from the five-second queue poll. Inactive/disconnected repositories are not scheduled or claimed.
+- This migration is not compatible with old API instances starting new SyncRuns, because every running row must carry a lease. Pause/drain old API replicas and manual sync traffic, apply the SyncRun lease migration, deploy the worker-enabled API, then resume traffic. Do not run old and new sync writers concurrently across this migration.
 
 ## Migration and controlled release procedure
 

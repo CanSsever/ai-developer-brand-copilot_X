@@ -108,7 +108,7 @@ This tracker records verified repository state for Phase 1. The governing implem
 - Provider calls and retry delays remain outside database transactions. Previously committed evidence is retained after later failure, while database uniqueness and the 24-hour overlap make a later run idempotent.
 - Final success updates the SyncRun only while it is still `running`; a concurrent cancellation cannot be overwritten and the repository success boundary is not advanced.
 - Development-database deployment, migration status, and connectivity were verified with TLS certificate validation enabled through the Supabase CA; no SSL verification bypass was used.
-- Automatic delayed re-execution is intentionally absent. Task 1.4 and Task 1.5 will own manual and scheduled orchestration.
+- Task 1.3 intentionally added no automatic delayed re-execution. Task 1.5 now owns the durable retry and scheduled orchestration recorded below.
 
 ### Task Status
 
@@ -131,7 +131,7 @@ This tracker records verified repository state for Phase 1. The governing implem
 
 - The browser supplies only an owned Project UUID. The API resolves the active ConnectedRepository and GitHub installation under the authenticated application user; client-supplied owner/name or provider identifiers are never trusted.
 - A successful initiation response contains only the new SyncRun identifier and `queued` status. Counters, timestamps, safe failure metadata, retry timing, and `lastSuccessfulSyncAt` are read through the Project summary after navigation/refresh.
-- The manual action uses a process-local asynchronous handoff after the durable queued row is created. It adds no queue, worker, scheduler, cron, webhook, or automatic polling. Durable background execution and recovery after process termination remain Task 1.5 scope.
+- Task 1.4 originally used a process-local asynchronous handoff after the durable queued row was created. Task 1.5 supersedes that handoff with the PostgreSQL-backed worker recorded below.
 - Manual requests are protected by the existing active-run database constraint, a persistent per-repository cooldown, and persisted provider `retryAfterAt`. No automatic retry is scheduled by this task.
 - Real GitHub ingestion remains reserved for the Task 1.7 live Phase exit. Task 1.4 verification uses synthetic provider fixtures and the existing deterministic dashboard fixture server.
 
@@ -141,10 +141,34 @@ This tracker records verified repository state for Phase 1. The governing implem
 
 ## Task 1.5 — Background Synchronization
 
-- [ ] reuse the same application service and idempotency rules as manual synchronization
-- [ ] run at most hourly per active repository in MVP
-- [ ] re-check ownership and connection status before work
-- [ ] stop scheduling and cancel eligible work after disconnect
+- [x] keep PostgreSQL and `SyncRun` as the durable queue source of truth
+- [x] make manual synchronization enqueue-only with no request-lifetime GitHub work
+- [x] claim queued or expired-lease work atomically with `FOR UPDATE SKIP LOCKED`
+- [x] use opaque lease tokens and conditional finalization so stale workers cannot overwrite newer claims
+- [x] heartbeat active leases and recover abandoned running work after lease expiry
+- [x] preserve the same SyncRun, fixed window, idempotency key, and commit uniqueness across recovery/retry
+- [x] bound worker execution to three attempts and honor provider timing plus exponential backoff
+- [x] never automatically execute succeeded, failed-terminal, or cancelled runs
+- [x] reuse the same application service and idempotency rules as manual synchronization
+- [x] schedule active repositories at most hourly in MVP with bounded candidate scans
+- [x] re-check repository and GitHub connection status before scheduling, claiming, and final success
+- [x] stop new claims during graceful shutdown and make abrupt termination recoverable
+- [x] stop scheduling and cancel/remove eligible work after disconnect
+- [x] keep multiple API replicas safe without Redis, BullMQ, or a separate deployment unit
+- [x] deterministic worker, migration, sync-engine, API, dashboard, and E2E tests pass
+
+### Task 1.5 Design Notes
+
+- The NestJS API hosts the worker lifecycle. Five-second queue polling, 30-second heartbeats, a 15-minute lease, a 25-repository scheduling batch, and the hourly repository cadence are injectable/testable bounded defaults.
+- Worker polling only claims existing durable jobs. A separate bounded scheduling pass creates at most one hourly run per active repository; database uniqueness closes multi-replica races.
+- Retryable execution requeues the same SyncRun only after the later of provider timing or worker backoff. The persisted window and cursor remain fixed, so overlapping recovery stays idempotent. A later user-triggered run supersedes and cancels the older waiting retry so an older window cannot regress the success boundary.
+- Existing running rows are migrated with immediately expiring leases, making pre-deployment in-flight work recoverable after rollout.
+- Worker logs contain safe run identifiers, attempt counts, and normalized failure codes only. Lease tokens, provider tokens, repository evidence, and raw errors are never logged or returned.
+- Real GitHub background ingestion remains reserved for Task 1.7 live verification.
+
+### Task Status
+
+- [x] Task 1.5 VERIFIED COMPLETE
 
 ## Task 1.6 — Merged Pull-Request Ingestion
 
@@ -168,5 +192,6 @@ This tracker records verified repository state for Phase 1. The governing implem
 - [x] Task 1.2 VERIFIED COMPLETE
 - [x] Task 1.3 VERIFIED COMPLETE
 - [x] Task 1.4 VERIFIED COMPLETE
-- [x] Task 1.5 NOT STARTED
+- [x] Task 1.5 VERIFIED COMPLETE
+- [x] Task 1.6 NOT STARTED
 - [x] Phase 2 NOT STARTED

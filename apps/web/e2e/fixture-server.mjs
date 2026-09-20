@@ -49,11 +49,13 @@ const user = {
 let fixtureState = "empty";
 let projects = [];
 let connections = [];
+let syncStatusReads = 0;
 
 function configureFixture(state) {
   fixtureState = state;
   projects = [];
   connections = [];
+  syncStatusReads = 0;
 
   const connectedStates = [
     "connected",
@@ -201,6 +203,22 @@ const apiServer = createServer(async (request, response) => {
   }
 
   if (request.method === "GET" && url.pathname === "/projects") {
+    const sync = projects[0]?.connectedRepository?.sync;
+    if (sync?.latestRun?.status === "queued") {
+      syncStatusReads += 1;
+      if (syncStatusReads >= 2) {
+        sync.lastSuccessfulSyncAt = "2026-09-19T10:00:00.000Z";
+        sync.latestRun = {
+          ...sync.latestRun,
+          attemptCount: 4,
+          commitsDiscovered: 3,
+          commitsInserted: 3,
+          finishedAt: "2026-09-19T10:00:00.000Z",
+          startedAt: "2026-09-19T09:59:00.000Z",
+          status: "succeeded",
+        };
+      }
+    }
     return sendJson(response, 200, projects);
   }
 
@@ -240,19 +258,20 @@ const apiServer = createServer(async (request, response) => {
       });
     }
     project.connectedRepository.sync = {
-      lastSuccessfulSyncAt: "2026-09-19T10:00:00.000Z",
+      lastSuccessfulSyncAt: null,
       latestRun: {
-        attemptCount: 4,
-        commitsDiscovered: 3,
-        commitsInserted: 3,
+        attemptCount: 0,
+        commitsDiscovered: 0,
+        commitsInserted: 0,
         failureCode: null,
-        finishedAt: "2026-09-19T10:00:00.000Z",
+        finishedAt: null,
         retryAfterAt: null,
-        startedAt: "2026-09-19T09:59:00.000Z",
-        status: "succeeded",
+        startedAt: null,
+        status: "queued",
         syncRunId,
       },
     };
+    syncStatusReads = 0;
     return sendJson(response, 202, { status: "queued", syncRunId });
   }
 

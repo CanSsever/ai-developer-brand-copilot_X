@@ -1,5 +1,4 @@
 import {
-  BadGatewayException,
   BadRequestException,
   ConflictException,
   HttpException,
@@ -84,19 +83,12 @@ export class GitHubManualSyncService {
       );
     }
 
-    return new Promise<StartSyncRunResponse>((resolve, reject) => {
-      let queued = false;
-      const completion = this.sync.synchronize(repository.id, (syncRunId) => {
-        queued = true;
-        resolve({ status: "queued", syncRunId });
-      });
-
-      void completion.catch((error: unknown) => {
-        if (!queued) {
-          reject(this.mapStartFailure(error));
-        }
-      });
-    });
+    try {
+      const queued = await this.sync.enqueue(repository.id);
+      return { status: "queued", syncRunId: queued.syncRunId };
+    } catch (error) {
+      throw this.mapStartFailure(error);
+    }
   }
 
   private mapStartFailure(error: unknown): HttpException {
@@ -108,13 +100,6 @@ export class GitHubManualSyncService {
     if (error instanceof GitHubCommitSyncError) {
       if (error.failureCode === "CONNECTED_REPOSITORY_NOT_AVAILABLE") {
         return new NotFoundException("Connected repository not found");
-      }
-      if (
-        error.failureCode === "GITHUB_AUTHORIZATION_FAILED" ||
-        error.failureCode === "GITHUB_RESPONSE_INVALID" ||
-        error.failureCode === "GITHUB_SAFETY_LIMIT_EXCEEDED"
-      ) {
-        return new BadGatewayException("GitHub access needs attention");
       }
     }
     return new ServiceUnavailableException(

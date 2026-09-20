@@ -107,6 +107,9 @@ test("manually syncs a connected repository and shows safe success status", asyn
   await expect(page.getByRole("status")).toHaveText(
     "GitHub activity synchronization started."
   );
+  await expect(page.getByText("Sync in progress.")).toBeVisible();
+
+  await page.reload();
   await expect(page.getByText(/3 new commits imported/)).toBeVisible();
 });
 

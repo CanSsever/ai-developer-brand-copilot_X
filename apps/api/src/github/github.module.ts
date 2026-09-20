@@ -6,6 +6,10 @@ import { GitHubAppAuthService } from "./github-app-auth.service";
 import { GitHubCommitSyncService } from "./github-commit-sync.service";
 import { GitHubConnectionService } from "./github-connection.service";
 import { GitHubManualSyncService } from "./github-manual-sync.service";
+import {
+  defaultGitHubSyncWorkerOptions,
+  GitHubSyncWorkerService,
+} from "./github-sync-worker.service";
 import { GitHubController } from "./github.controller";
 import {
   GITHUB_APP_CONFIG,
@@ -13,6 +17,7 @@ import {
   GITHUB_RETRY_DELAY,
   GITHUB_RETRY_RANDOM,
   GITHUB_SYNC_CLOCK,
+  GITHUB_SYNC_WORKER_OPTIONS,
 } from "./github.tokens";
 import type { GitHubAppConfig } from "./github.types";
 
@@ -32,11 +37,16 @@ export class GitHubModule {
         },
         { provide: GITHUB_RETRY_RANDOM, useValue: Math.random },
         { provide: GITHUB_SYNC_CLOCK, useValue: () => new Date() },
+        {
+          provide: GITHUB_SYNC_WORKER_OPTIONS,
+          useValue: defaultGitHubSyncWorkerOptions,
+        },
         GitHubAppAuthService,
         GitHubApiService,
         GitHubCommitSyncService,
         GitHubConnectionService,
         GitHubManualSyncService,
+        GitHubSyncWorkerService,
       ],
       exports: [GitHubCommitSyncService],
     };

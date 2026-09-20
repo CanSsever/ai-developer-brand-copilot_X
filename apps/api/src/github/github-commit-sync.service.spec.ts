@@ -179,6 +179,9 @@ describe("GitHubCommitSyncService", () => {
       data: {
         status: "running",
         startedAt: new Date("2026-09-18T12:01:00.000Z"),
+        workerAttemptCount: { increment: 1 },
+        leaseToken: expect.any(String),
+        leaseExpiresAt: new Date("2026-09-18T12:16:00.000Z"),
       },
     });
     expect(github.listRepositoryCommitSummaries).toHaveBeenCalledWith(
@@ -226,7 +229,11 @@ describe("GitHubCommitSyncService", () => {
       })
     );
     expect(prisma.syncRun.updateMany).toHaveBeenLastCalledWith({
-      where: { id: syncRunId, status: "running" },
+      where: {
+        id: syncRunId,
+        status: "running",
+        leaseToken: expect.any(String),
+      },
       data: {
         status: "succeeded",
         finishedAt: new Date("2026-09-18T12:02:00.000Z"),
@@ -235,6 +242,8 @@ describe("GitHubCommitSyncService", () => {
         attemptCount: 5,
         retryAfterAt: null,
         failureCode: null,
+        leaseToken: null,
+        leaseExpiresAt: null,
       },
     });
     expect(JSON.stringify(logger.info.mock.calls)).not.toContain(privateMessage);
@@ -404,7 +413,8 @@ describe("GitHubCommitSyncService", () => {
     expect(prisma.syncRun.updateMany).toHaveBeenCalledWith({
       where: {
         id: syncRunId,
-        status: { in: ["queued", "running"] },
+        status: "running",
+        leaseToken: expect.any(String),
       },
       data: {
         status: "failed_retryable",
@@ -415,6 +425,8 @@ describe("GitHubCommitSyncService", () => {
         attemptCount: 3,
         retryAfterAt: null,
         failureCode: "GITHUB_PROVIDER_UNAVAILABLE",
+        leaseToken: null,
+        leaseExpiresAt: null,
       },
     });
     expect(prisma.connectedRepository.updateMany).not.toHaveBeenCalled();
@@ -444,7 +456,8 @@ describe("GitHubCommitSyncService", () => {
     expect(prisma.syncRun.updateMany).toHaveBeenCalledWith({
       where: {
         id: syncRunId,
-        status: { in: ["queued", "running"] },
+        status: "running",
+        leaseToken: expect.any(String),
       },
       data: expect.objectContaining({
         status: "failed_retryable",
@@ -482,7 +495,8 @@ describe("GitHubCommitSyncService", () => {
     expect(prisma.syncRun.updateMany).toHaveBeenCalledWith({
       where: {
         id: syncRunId,
-        status: { in: ["queued", "running"] },
+        status: "running",
+        leaseToken: expect.any(String),
       },
       data: expect.objectContaining({
         status: "failed_retryable",
@@ -526,13 +540,18 @@ describe("GitHubCommitSyncService", () => {
       failureCode: "SYNC_CANCELLED",
     });
     expect(prisma.syncRun.updateMany).toHaveBeenNthCalledWith(1, {
-      where: { id: syncRunId, status: "running" },
+      where: {
+        id: syncRunId,
+        status: "running",
+        leaseToken: expect.any(String),
+      },
       data: expect.objectContaining({ status: "succeeded" }),
     });
     expect(prisma.syncRun.updateMany).toHaveBeenNthCalledWith(2, {
       where: {
         id: syncRunId,
-        status: { in: ["queued", "running"] },
+        status: "running",
+        leaseToken: expect.any(String),
       },
       data: expect.objectContaining({
         status: "failed_terminal",
@@ -615,6 +634,67 @@ describe("GitHubCommitSyncService", () => {
       99n,
       expect.any(Object)
     );
+  });
+
+  it("executes an already claimed durable run without creating another SyncRun", async () => {
+    const claimedLeaseToken = "claimed-lease-fixture";
+    const { github, prisma, service } = harness();
+    prisma.syncRun.findFirst.mockResolvedValue({
+      id: syncRunId,
+      attemptCount: 2,
+      commitsDiscovered: 0,
+      commitsInserted: 0,
+      startedAt: new Date("2026-09-20T11:59:00.000Z"),
+      windowStart: new Date("2026-08-21T12:00:00.000Z"),
+      windowEnd: new Date("2026-09-20T12:00:00.000Z"),
+      connectedRepository: {
+        id: repositoryId,
+        providerRepositoryId: 99n,
+        lastSuccessfulSyncAt: null,
+        gitHubConnection: { providerInstallationId: 42n },
+      },
+    });
+
+    const result = await service.executeClaimed(
+      syncRunId,
+      claimedLeaseToken
+    );
+
+    expect(prisma.syncRun.create).not.toHaveBeenCalled();
+    expect(result.attemptCount).toBe(7);
+    expect(github.listRepositoryCommitSummaries).toHaveBeenCalledWith(
+      42n,
+      99n,
+      {
+        since: new Date("2026-08-21T12:00:00.000Z"),
+        until: new Date("2026-09-20T12:00:00.000Z"),
+      }
+    );
+    expect(prisma.syncRun.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          id: syncRunId,
+          status: "running",
+          leaseToken: claimedLeaseToken,
+        },
+      })
+    );
+  });
+
+  it("rejects a missing or lost claim before any provider request", async () => {
+    const { github, prisma, service } = harness();
+    prisma.syncRun.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.executeClaimed(
+        syncRunId,
+        "423e4567-e89b-42d3-a456-426614174000"
+      )
+    ).rejects.toMatchObject({
+      failureCode: "CONNECTED_REPOSITORY_NOT_AVAILABLE",
+    });
+
+    expect(github.listRepositoryCommitSummaries).not.toHaveBeenCalled();
   });
 
   it("never serializes an ephemeral token into persistence or safe errors", async () => {

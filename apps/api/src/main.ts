@@ -24,6 +24,7 @@ async function bootstrap(): Promise<void> {
     logger: new StructuredLogger(),
   });
 
+  app.enableShutdownHooks();
   await app.listen(config.PORT);
 }
 
