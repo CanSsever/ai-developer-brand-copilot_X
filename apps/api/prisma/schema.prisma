@@ -26,6 +26,8 @@ model Project {
   user                     User                      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   connectedRepository      ConnectedRepository?
   gitHubConnectionAttempts GitHubConnectionAttempt[]
+  developmentEvents        DevelopmentEvent[]
+  projectState             ProjectState?
 
   @@index([userId])
 }
@@ -103,6 +105,7 @@ model GitHubCommit {
   updatedAt             DateTime            @default(now()) @updatedAt @db.Timestamptz(3)
   connectedRepository   ConnectedRepository @relation(fields: [connectedRepositoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   files                 GitHubCommitFile[]
+  developmentEventEvidence DevelopmentEventCommitEvidence[]
 
   @@unique([connectedRepositoryId, sha])
   @@index([connectedRepositoryId, committedAt])
@@ -148,6 +151,7 @@ model GitHubPullRequest {
   connectedRepository   ConnectedRepository       @relation(fields: [connectedRepositoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   files                 GitHubPullRequestFile[]
   linkedCommits         GitHubPullRequestCommit[]
+  developmentEventEvidence DevelopmentEventPullRequestEvidence[]
 
   @@unique([connectedRepositoryId, providerPullRequestId])
   @@unique([connectedRepositoryId, number])
@@ -224,4 +228,142 @@ model GitHubConnectionAttempt {
   @@index([userId])
   @@index([projectId])
   @@index([expiresAt])
+}
+
+enum DevelopmentEventType {
+  feature_started
+  feature_completed
+  bug_fixed
+  ui_improved
+  architecture_decision
+  testing_milestone
+  performance_improvement
+  release
+  project_milestone
+  refactor_completed
+}
+
+enum DevelopmentEventStatus {
+  active
+  superseded
+  rejected
+}
+
+model DevelopmentEvent {
+  id                       String                                @id @default(uuid()) @db.Uuid
+  projectId                String                                @db.Uuid
+  eventKey                 String                                @db.VarChar(64)
+  inputFingerprint         String                                @db.VarChar(64)
+  extractionVersion        String                                @db.VarChar(64)
+  type                     DevelopmentEventType
+  title                    String
+  summary                  String
+  importanceScore          Decimal                               @db.Decimal(4, 3)
+  contentPotentialScore    Decimal                               @db.Decimal(4, 3)
+  confidence               Decimal                               @db.Decimal(4, 3)
+  occurredAt               DateTime                              @db.Timestamptz(3)
+  technologies             String[]                              @default([])
+  relatedFeatureIds        String[]                              @default([])
+  status                   DevelopmentEventStatus                @default(active)
+  supersedesEventId        String?                               @unique @db.Uuid
+  createdAt                DateTime                              @default(now()) @db.Timestamptz(3)
+  updatedAt                DateTime                              @default(now()) @updatedAt @db.Timestamptz(3)
+  project                  Project                               @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  supersedesEvent          DevelopmentEvent?                     @relation("DevelopmentEventSupersession", fields: [supersedesEventId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  supersededBy             DevelopmentEvent?                     @relation("DevelopmentEventSupersession")
+  commitEvidence           DevelopmentEventCommitEvidence[]
+  pullRequestEvidence      DevelopmentEventPullRequestEvidence[]
+  projectStateVersionLinks ProjectStateVersionEvent[]
+
+  @@unique([projectId, eventKey, extractionVersion])
+  @@index([projectId, occurredAt])
+  @@index([projectId, status])
+  @@index([projectId, inputFingerprint])
+}
+
+model DevelopmentEventCommitEvidence {
+  id                 String            @id @default(uuid()) @db.Uuid
+  developmentEventId String            @db.Uuid
+  gitHubCommitId     String?           @db.Uuid
+  commitSha          String            @db.VarChar(64)
+  detachedAt         DateTime?         @db.Timestamptz(3)
+  createdAt          DateTime          @default(now()) @db.Timestamptz(3)
+  developmentEvent   DevelopmentEvent  @relation(fields: [developmentEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  gitHubCommit       GitHubCommit?     @relation(fields: [gitHubCommitId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([developmentEventId, commitSha])
+  @@unique([developmentEventId, gitHubCommitId])
+  @@index([gitHubCommitId])
+}
+
+model DevelopmentEventPullRequestEvidence {
+  id                        String             @id @default(uuid()) @db.Uuid
+  developmentEventId        String             @db.Uuid
+  gitHubPullRequestId       String?            @db.Uuid
+  providerPullRequestId     BigInt             @db.BigInt
+  detachedAt                DateTime?          @db.Timestamptz(3)
+  createdAt                 DateTime           @default(now()) @db.Timestamptz(3)
+  developmentEvent          DevelopmentEvent   @relation(fields: [developmentEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  gitHubPullRequest         GitHubPullRequest? @relation(fields: [gitHubPullRequestId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([developmentEventId, providerPullRequestId])
+  @@unique([developmentEventId, gitHubPullRequestId])
+  @@index([gitHubPullRequestId])
+}
+
+model ProjectState {
+  id                 String                @id @default(uuid()) @db.Uuid
+  projectId          String                @unique @db.Uuid
+  purpose            String?
+  targetAudience     String?
+  technologies       String[]              @default([])
+  currentPhase       String?
+  activeFeatures     Json                  @default("[]")
+  completedFeatures  Json                  @default("[]")
+  recentMilestones   Json                  @default("[]")
+  sourceFingerprint  String                @db.VarChar(64)
+  projectionVersion  String                @db.VarChar(64)
+  version            Int
+  lastUpdatedAt      DateTime              @db.Timestamptz(3)
+  createdAt          DateTime              @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime              @default(now()) @updatedAt @db.Timestamptz(3)
+  project            Project               @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  versions           ProjectStateVersion[]
+
+  @@unique([projectId, sourceFingerprint, projectionVersion])
+}
+
+model ProjectStateVersion {
+  id                 String                     @id @default(uuid()) @db.Uuid
+  projectStateId     String                     @db.Uuid
+  version            Int
+  purpose            String?
+  targetAudience     String?
+  technologies       String[]                   @default([])
+  currentPhase       String?
+  activeFeatures     Json                       @default("[]")
+  completedFeatures  Json                       @default("[]")
+  recentMilestones   Json                       @default("[]")
+  sourceFingerprint  String                     @db.VarChar(64)
+  projectionVersion  String                     @db.VarChar(64)
+  lastUpdatedAt      DateTime                   @db.Timestamptz(3)
+  createdAt          DateTime                   @default(now()) @db.Timestamptz(3)
+  projectState       ProjectState               @relation(fields: [projectStateId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvents  ProjectStateVersionEvent[]
+
+  @@unique([projectStateId, version])
+  @@unique([projectStateId, sourceFingerprint, projectionVersion])
+  @@index([projectStateId, createdAt])
+}
+
+model ProjectStateVersionEvent {
+  id                    String              @id @default(uuid()) @db.Uuid
+  projectStateVersionId String              @db.Uuid
+  developmentEventId    String              @db.Uuid
+  createdAt             DateTime            @default(now()) @db.Timestamptz(3)
+  projectStateVersion   ProjectStateVersion @relation(fields: [projectStateVersionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvent      DevelopmentEvent    @relation(fields: [developmentEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([projectStateVersionId, developmentEventId])
+  @@index([developmentEventId])
 }
