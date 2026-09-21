@@ -209,14 +209,14 @@ This tracker records verified repository state for Phase 1. The governing implem
 - [x] verify real commit and merged pull-request rows, file evidence, and pull-request commit links are ingested
 - [x] verify repeated and overlapping synchronization is duplicate-free with real commit and pull-request evidence present
 - [x] deterministically test rate-limit, authorization, retry, partial-import, terminal-failure, stale-lease recovery, and disconnected-repository scheduling behavior
-- [ ] verify the authenticated dashboard/manual API flow against the real repository after test evidence exists
-- [ ] verify live disconnect/access loss, stopped scheduling, and reconnect without deleting the GitHub App
+- [x] verify the authenticated dashboard/manual API flow against the real repository after test evidence exists
+- [x] verify live disconnect/access loss, stopped scheduling, and reconnect without deleting the GitHub App
 - [x] verify live worker logs contain no credential, token, authorization header, repository identifier, provider body, private key, or lease-token field
 - [x] verify all migrations are applied, database connectivity succeeds, ingestion-table RLS is enabled, and authenticated PR-table grants remain read-only
 - [x] pass the complete local regression suite, deterministic E2E suite, and Gitleaks scan
-- [ ] verify final hosted GitHub Actions after the Task 1.7 fixes are committed and pushed
+- [x] verify final hosted GitHub Actions after the Task 1.7 fixes are committed and pushed
 - [x] verify no provider token or private repository identifier appears in client responses or logs
-- [ ] Phase 1 exit gate VERIFIED
+- [x] Phase 1 exit gate VERIFIED
 
 ### Task 1.7 Live Verification Record
 
@@ -227,29 +227,30 @@ This tracker records verified repository state for Phase 1. The governing implem
 - Live PR ingestion exposed an optional provider `merge_commit_sha` field being omitted rather than returned as `null`. The normalizer now maps both omitted and explicit-null values to `null`; malformed provided SHAs remain rejected. A focused regression test covers the omitted-field response.
 - A second 24-hour-overlap run rediscovered three commits and one merged pull request while inserting zero new evidence. All five aggregate evidence counts remained unchanged, all repository-scoped duplicate counts were zero, and the success boundary advanced to the second completed window.
 - Live log inspection was performed by boolean comparison only; no credential value, Authorization header, token/JWT, private key marker, repository identifier, provider response body, or lease-token field was found.
-- Live local disconnect correctly removed the application connection while leaving the GitHub App installation unchanged, but exposed that the new-install URL cannot re-associate an already-installed App. A separate user-authorization reconnect path now discovers the authenticated GitHub user's existing installation, re-verifies App ownership and user access, and restores the local connection idempotently. Live reconnect and post-reconnect sync verification remain pending.
+- Live local disconnect correctly removed the application connection while leaving the GitHub App installation unchanged. A separate user-authorization reconnect path discovers the authenticated GitHub user's existing installation, re-verifies App ownership and user access, and restores the local connection idempotently. Existing-installation reconnect, repository reconnect, dashboard state, and post-reconnect manual synchronization were verified successfully.
 - The reconnect retest exposed a stale selected-connection URL after local deletion. The connection page previously grouped base Project/installation loading with optional repository discovery, so the expected not-found result for the deleted connection incorrectly set the whole page's generic load error. Base responses are now runtime-validated independently, stale selections are ignored, and repository-specific failures no longer discard valid Project/installation state.
 - A clean-URL retest proved the stale selection was not the only failure. Value-free inspection of the real service output confirmed no contract field mismatch: Project IDs/timezones were strings, the disconnected repository was null, and connections was an empty array. The remaining base-load defect was the page resolving independent Supabase SSR sessions concurrently for the two requests. The page now resolves one server-side session into a token-closed requester and reuses it for both validated responses; safe diagnostics contain only stage, parser, field path, expected type, and actual category.
 - No destructive provider-side rate-limit test was performed. Rate-limit, retry, authorization-loss, partial-import, crash recovery, and disconnected scheduling remain covered by deterministic automated tests as required by the safe-verification boundary.
 - The current local regression contains 222 passing unit/integration tests across 32 files, 11 passing Playwright scenarios, a successful production build, and a clean Gitleaks history/trackable-content scan. Focused verification includes 47 reconnect tests, four response-parser tests, one single-session requester test, and two browser regressions for disconnected and connected installation states.
+- Commit `fe4967c` (`fix: complete Phase 1 live GitHub verification`) is the final Phase 1 implementation commit. The hosted GitHub Actions workflow completed successfully for that commit; both quality gates and secret scanning passed on the committed code.
 
 ### Task 1.7 Remaining Blockers
 
-- Complete the authenticated dashboard/manual-sync and fixed safe reconnect live checks with the real browser session.
-- Commit and push the Task 1.7 fixes, then observe the final hosted GitHub Actions quality and secret-scan jobs passing.
+- None.
 
 ### Task Status
 
-- [x] Task 1.7 INCOMPLETE
-- [x] Phase 1 IN PROGRESS
+- [x] Task 1.7 VERIFIED COMPLETE
+- [x] Phase 1 VERIFIED COMPLETE
 
 ## Current Status
 
-- [x] Phase 1 IN PROGRESS
+- [x] Phase 1 VERIFIED COMPLETE
+- [x] Task 1.1 VERIFIED COMPLETE
 - [x] Task 1.2 VERIFIED COMPLETE
 - [x] Task 1.3 VERIFIED COMPLETE
 - [x] Task 1.4 VERIFIED COMPLETE
 - [x] Task 1.5 VERIFIED COMPLETE
 - [x] Task 1.6 VERIFIED COMPLETE
-- [x] Task 1.7 INCOMPLETE
+- [x] Task 1.7 VERIFIED COMPLETE
 - [x] Phase 2 NOT STARTED

@@ -1,6 +1,6 @@
 # AI Developer Brand Copilot
 
-This repository contains the verified Phase 0 engineering foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, the GitHub App connection foundation, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 1 is in progress: normalized commit and merged pull-request persistence, incremental combined synchronization, provider retry hardening, authenticated manual synchronization, and durable hourly background execution are implemented. Real provider ingestion exit verification remains reserved for Task 1.7; product intelligence and AI integration are not implemented.
+This repository contains the verified Phase 0 engineering foundation and verified Phase 1 GitHub ingestion foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, GitHub App installation and reconnect, normalized commit and merged pull-request ingestion, idempotent incremental synchronization, provider retry hardening, authenticated manual synchronization, durable background execution, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 2 has not started; DevelopmentEvent, ProjectState, product intelligence, and AI integration are not implemented.
 
 ## Prerequisites
 
