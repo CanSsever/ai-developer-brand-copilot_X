@@ -34,6 +34,7 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 120_000,
       env: {
+        NEXT_E2E: "1",
         NEXT_PUBLIC_API_BASE_URL: fixtureApiOrigin,
         NEXT_PUBLIC_SITE_URL: webOrigin,
         NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:4100",

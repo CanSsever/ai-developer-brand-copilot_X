@@ -1,12 +1,11 @@
 import type {
   AuthorizedRepositorySummary,
   GitHubConnectionSummary,
-  ProjectSummary,
 } from "@developer-brand-copilot/contracts";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { authenticatedApiRequest } from "../../../lib/api/server";
+import { createAuthenticatedApiRequester } from "../../../lib/api/server";
 import { createClient } from "../../../lib/supabase/server";
 import {
   connectRepository,
@@ -15,6 +14,13 @@ import {
   startGitHubConnection,
 } from "../actions";
 import { connectionErrorMessage, connectionStatusMessage } from "../feedback";
+import {
+  parseAuthorizedRepositories,
+  parseConnectionProjects,
+  parseGitHubConnections,
+  ResponseValidationError,
+  type ConnectionProjectSummary,
+} from "./response-parsers";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +30,20 @@ interface PageProps {
 
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function reportSafeLoadFailure(stage: string, error: unknown): void {
+  if (error instanceof ResponseValidationError) {
+    console.warn("github_connect_response_validation_failed", {
+      actual: error.actual,
+      expected: error.expected,
+      parser: error.parser,
+      path: error.path,
+      stage,
+    });
+    return;
+  }
+  console.warn("github_connect_data_load_failed", { stage });
 }
 
 export default async function GitHubConnectPage({ searchParams }: PageProps) {
@@ -36,28 +56,42 @@ export default async function GitHubConnectPage({ searchParams }: PageProps) {
   const connectionId = first(query.connectionId);
   const statusMessage = connectionStatusMessage(first(query.status));
   const errorMessage = connectionErrorMessage(first(query.error));
-  let projects: readonly ProjectSummary[] = [];
+  let projects: readonly ConnectionProjectSummary[] = [];
   let connections: readonly GitHubConnectionSummary[] = [];
   let repositories: readonly AuthorizedRepositorySummary[] = [];
   let loadFailed = false;
+  let repositoryLoadFailed = false;
 
   try {
-    [projects, connections] = await Promise.all([
-      authenticatedApiRequest<readonly ProjectSummary[]>("/projects"),
-      authenticatedApiRequest<readonly GitHubConnectionSummary[]>(
-        "/github/connections"
-      ),
+    const apiRequest = await createAuthenticatedApiRequester();
+    const [projectResponse, connectionResponse] = await Promise.all([
+      apiRequest<unknown>("/projects"),
+      apiRequest<unknown>("/github/connections"),
     ]);
+    projects = parseConnectionProjects(projectResponse);
+    connections = parseGitHubConnections(connectionResponse);
+  } catch (error) {
+    reportSafeLoadFailure("base", error);
+    loadFailed = true;
+  }
 
-    if (projectId && connectionId) {
-      repositories = await authenticatedApiRequest<
-        readonly AuthorizedRepositorySummary[]
-      >(
+  const hasSelectedProject = projects.some((project) => project.id === projectId);
+  const hasSelectedConnection = connections.some(
+    (connection) => connection.id === connectionId
+  );
+  const hasValidSelection = hasSelectedProject && hasSelectedConnection;
+
+  if (!loadFailed && projectId && connectionId && hasValidSelection) {
+    try {
+      const apiRequest = await createAuthenticatedApiRequester();
+      const repositoryResponse = await apiRequest<unknown>(
         `/github/connections/${encodeURIComponent(connectionId)}/repositories?projectId=${encodeURIComponent(projectId)}`
       );
+      repositories = parseAuthorizedRepositories(repositoryResponse);
+    } catch (error) {
+      reportSafeLoadFailure("repositories", error);
+      repositoryLoadFailed = true;
     }
-  } catch {
-    loadFailed = true;
   }
 
   return (
@@ -69,6 +103,9 @@ export default async function GitHubConnectPage({ searchParams }: PageProps) {
       </header>
 
       {loadFailed ? <p role="alert">Connection data could not be loaded.</p> : null}
+      {repositoryLoadFailed ? (
+        <p role="alert">Authorized repositories could not be loaded.</p>
+      ) : null}
       {statusMessage ? <p role="status">{statusMessage}</p> : null}
       {errorMessage ? <p role="alert">{errorMessage}</p> : null}
 
@@ -87,7 +124,13 @@ export default async function GitHubConnectPage({ searchParams }: PageProps) {
               <span>{project.timezone}</span>
               <form action={startGitHubConnection} className="inline pl-3">
                 <input type="hidden" name="projectId" value={project.id} />
+                <input type="hidden" name="mode" value="install" />
                 <button type="submit">Connect GitHub App</button>
+              </form>
+              <form action={startGitHubConnection} className="inline pl-3">
+                <input type="hidden" name="projectId" value={project.id} />
+                <input type="hidden" name="mode" value="reconnect" />
+                <button type="submit">Reconnect existing installation</button>
               </form>
             </li>
           ))}
@@ -116,7 +159,7 @@ export default async function GitHubConnectPage({ searchParams }: PageProps) {
         <p>Local disconnect does not uninstall or revoke the GitHub App at GitHub.</p>
       </section>
 
-      {projectId && connectionId ? (
+      {projectId && connectionId && hasValidSelection ? (
         <section aria-labelledby="repositories-heading">
           <h2 id="repositories-heading" className="text-xl font-semibold">
             Authorized repositories

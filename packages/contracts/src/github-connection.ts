@@ -26,7 +26,10 @@ export interface CreateProjectRequest {
 
 export interface GitHubConnectionStartRequest {
   readonly projectId: string;
+  readonly mode?: GitHubConnectionStartMode;
 }
+
+export type GitHubConnectionStartMode = "install" | "reconnect";
 
 export interface GitHubConnectionStartResponse {
   readonly installationUrl: string;
@@ -34,7 +37,7 @@ export interface GitHubConnectionStartResponse {
 
 export interface GitHubConnectionCompleteRequest {
   readonly code: string;
-  readonly installationId: string;
+  readonly installationId?: string;
   readonly state: string;
 }
 

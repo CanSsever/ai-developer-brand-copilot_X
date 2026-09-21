@@ -137,6 +137,46 @@ describe("GitHubApiService merged pull requests", () => {
     expect(logs).not.toContain(token);
   });
 
+  it("accepts an omitted optional merge commit SHA", async () => {
+    const detailWithoutMergeSha = detail(12, {
+      merge_commit_sha: undefined,
+    });
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response({ token: "ephemeral-value" }))
+      .mockResolvedValueOnce(
+        response({
+          total_count: 1,
+          items: [{ number: 12, pull_request: {} }],
+        })
+      )
+      .mockResolvedValueOnce(response(detailWithoutMergeSha))
+      .mockResolvedValueOnce(
+        response([
+          {
+            filename: "src/synthetic.ts",
+            status: "modified",
+            additions: 8,
+            deletions: 3,
+            changes: 11,
+          },
+        ])
+      )
+      .mockResolvedValueOnce(response([{ sha: sha(120) }]));
+    const { service } = harness(fetcher);
+
+    await expect(
+      service.listMergedPullRequests(42n, repository, window)
+    ).resolves.toMatchObject({
+      pullRequests: [
+        expect.objectContaining({
+          mergeCommitSha: null,
+          commitShas: [sha(120)],
+        }),
+      ],
+    });
+  });
+
   it("does not accept open or closed-unmerged candidates as merged evidence", async () => {
     const fetcher = vi
       .fn()

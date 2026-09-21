@@ -11,6 +11,7 @@ export type {
   GitHubConnectionCompleteResponse,
   GitHubConnectionStartRequest,
   GitHubConnectionStartResponse,
+  GitHubConnectionStartMode,
   GitHubConnectionStatus,
   GitHubConnectionSummary,
   ProjectConnectedRepositorySummary,

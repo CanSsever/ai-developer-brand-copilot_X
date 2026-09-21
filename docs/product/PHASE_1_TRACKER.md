@@ -201,12 +201,47 @@ This tracker records verified repository state for Phase 1. The governing implem
 
 ## Task 1.7 — Live Verification & Phase Exit
 
-- [ ] verify a real GitHub App installation can select, connect, sync, disconnect, and reconnect a repository
-- [ ] verify repeated and overlapping commit and pull-request synchronization is duplicate-free
-- [ ] integration-test rate-limit, authorization, retry, partial-import, and terminal-failure states
-- [ ] verify background synchronization stops after disconnect
-- [ ] verify no provider token or private repository identifier appears in client responses or logs
+- [x] verify the real GitHub App can mint an installation token, resolve the connected private repository, and perform read-only provider calls
+- [x] verify the real scheduler and durable worker enqueue, claim, and complete repository synchronization
+- [x] verify a queued SyncRun survives a controlled API-process restart and completes after restart
+- [x] verify a second active enqueue is rejected and an incremental run uses the required 24-hour overlap
+- [x] verify empty GitHub repositories are handled as zero commit evidence rather than a false authorization failure
+- [x] verify real commit and merged pull-request rows, file evidence, and pull-request commit links are ingested
+- [x] verify repeated and overlapping synchronization is duplicate-free with real commit and pull-request evidence present
+- [x] deterministically test rate-limit, authorization, retry, partial-import, terminal-failure, stale-lease recovery, and disconnected-repository scheduling behavior
+- [ ] verify the authenticated dashboard/manual API flow against the real repository after test evidence exists
+- [ ] verify live disconnect/access loss, stopped scheduling, and reconnect without deleting the GitHub App
+- [x] verify live worker logs contain no credential, token, authorization header, repository identifier, provider body, private key, or lease-token field
+- [x] verify all migrations are applied, database connectivity succeeds, ingestion-table RLS is enabled, and authenticated PR-table grants remain read-only
+- [x] pass the complete local regression suite, deterministic E2E suite, and Gitleaks scan
+- [ ] verify final hosted GitHub Actions after the Task 1.7 fixes are committed and pushed
+- [x] verify no provider token or private repository identifier appears in client responses or logs
 - [ ] Phase 1 exit gate VERIFIED
+
+### Task 1.7 Live Verification Record
+
+- The configured GitHub App successfully created installation tokens, resolved the authorized repository, and read real non-sensitive commit and merged pull-request evidence.
+- The first live scheduled run exposed GitHub's documented empty-repository commit-list response being normalized as an authorization failure. The provider reader now accepts only that exact response as an empty commit list; unrelated conflicts remain terminal. Focused regression tests cover both cases.
+- After the fix, the durable worker completed the original fixed-window run. A second run was queued while the API process was stopped, a duplicate active enqueue was rejected, and the restarted worker claimed and completed the queued run with a 24-hour overlap.
+- The first real-evidence run persisted three commit rows, three commit-file rows, one merged pull-request row, one pull-request-file row, and one pull-request commit link. Commit and pull-request SyncRun counters matched those aggregate counts, and the repository success boundary matched the completed fixed window.
+- Live PR ingestion exposed an optional provider `merge_commit_sha` field being omitted rather than returned as `null`. The normalizer now maps both omitted and explicit-null values to `null`; malformed provided SHAs remain rejected. A focused regression test covers the omitted-field response.
+- A second 24-hour-overlap run rediscovered three commits and one merged pull request while inserting zero new evidence. All five aggregate evidence counts remained unchanged, all repository-scoped duplicate counts were zero, and the success boundary advanced to the second completed window.
+- Live log inspection was performed by boolean comparison only; no credential value, Authorization header, token/JWT, private key marker, repository identifier, provider response body, or lease-token field was found.
+- Live local disconnect correctly removed the application connection while leaving the GitHub App installation unchanged, but exposed that the new-install URL cannot re-associate an already-installed App. A separate user-authorization reconnect path now discovers the authenticated GitHub user's existing installation, re-verifies App ownership and user access, and restores the local connection idempotently. Live reconnect and post-reconnect sync verification remain pending.
+- The reconnect retest exposed a stale selected-connection URL after local deletion. The connection page previously grouped base Project/installation loading with optional repository discovery, so the expected not-found result for the deleted connection incorrectly set the whole page's generic load error. Base responses are now runtime-validated independently, stale selections are ignored, and repository-specific failures no longer discard valid Project/installation state.
+- A clean-URL retest proved the stale selection was not the only failure. Value-free inspection of the real service output confirmed no contract field mismatch: Project IDs/timezones were strings, the disconnected repository was null, and connections was an empty array. The remaining base-load defect was the page resolving independent Supabase SSR sessions concurrently for the two requests. The page now resolves one server-side session into a token-closed requester and reuses it for both validated responses; safe diagnostics contain only stage, parser, field path, expected type, and actual category.
+- No destructive provider-side rate-limit test was performed. Rate-limit, retry, authorization-loss, partial-import, crash recovery, and disconnected scheduling remain covered by deterministic automated tests as required by the safe-verification boundary.
+- The current local regression contains 222 passing unit/integration tests across 32 files, 11 passing Playwright scenarios, a successful production build, and a clean Gitleaks history/trackable-content scan. Focused verification includes 47 reconnect tests, four response-parser tests, one single-session requester test, and two browser regressions for disconnected and connected installation states.
+
+### Task 1.7 Remaining Blockers
+
+- Complete the authenticated dashboard/manual-sync and fixed safe reconnect live checks with the real browser session.
+- Commit and push the Task 1.7 fixes, then observe the final hosted GitHub Actions quality and secret-scan jobs passing.
+
+### Task Status
+
+- [x] Task 1.7 INCOMPLETE
+- [x] Phase 1 IN PROGRESS
 
 ## Current Status
 
@@ -216,5 +251,5 @@ This tracker records verified repository state for Phase 1. The governing implem
 - [x] Task 1.4 VERIFIED COMPLETE
 - [x] Task 1.5 VERIFIED COMPLETE
 - [x] Task 1.6 VERIFIED COMPLETE
-- [x] Task 1.7 NOT STARTED
+- [x] Task 1.7 INCOMPLETE
 - [x] Phase 2 NOT STARTED

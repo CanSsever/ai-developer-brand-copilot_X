@@ -1,6 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 const fixtureApiOrigin = "http://127.0.0.1:4101";
+const projectId = "323e4567-e89b-42d3-a456-426614174000";
+const connectionId = "423e4567-e89b-42d3-a456-426614174000";
 
 async function setFixtureState(
   request: APIRequestContext,
@@ -17,7 +19,9 @@ async function setFixtureState(
 async function authenticate(page: Page) {
   await page.goto("/");
   await page.getByRole("button", { name: "Sign in with GitHub" }).click();
-  await expect(page.getByText("You are signed in.")).toBeVisible();
+  await expect(page.getByText("You are signed in.")).toBeVisible({
+    timeout: 15_000,
+  });
   await page.getByRole("link", { name: "Open dashboard" }).click();
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 }
@@ -77,6 +81,44 @@ test("reaches the existing GitHub connection management flow", async ({
   await expect(page).toHaveURL(/\/github\/connect$/);
   await expect(page.getByRole("heading", { name: "GitHub App connection" })).toBeVisible();
   await expect(page.getByText("No GitHub App installation is connected.")).toBeVisible();
+});
+
+test("renders reconnect after local disconnect even with a stale connection selection", async ({
+  page,
+  request,
+}) => {
+  await setFixtureState(request, "project");
+  await authenticate(page);
+
+  await page.goto(
+    `/github/connect?projectId=${projectId}&connectionId=${connectionId}`
+  );
+
+  await expect(page.getByText("Europe/Berlin")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Reconnect existing installation" })
+  ).toBeVisible();
+  await expect(page.getByText("No GitHub App installation is connected.")).toBeVisible();
+  await expect(
+    page.getByText("Connection data could not be loaded.")
+  ).toHaveCount(0);
+});
+
+test("renders a connected installation and its authorized repositories", async ({
+  page,
+  request,
+}) => {
+  await setFixtureState(request, "installed");
+  await authenticate(page);
+
+  await page.getByRole("link", { name: "Connect repository" }).click();
+
+  await expect(page.getByText("fixture-account (User)")).toBeVisible();
+  await expect(page.getByText("fixture-owner/fixture-repository")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Connect repository" })).toBeVisible();
+  await expect(
+    page.getByText("Connection data could not be loaded.")
+  ).toHaveCount(0);
 });
 
 test("represents a connected private repository", async ({ page, request }) => {

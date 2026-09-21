@@ -112,6 +112,18 @@ describe("GitHubApiService", () => {
     ).rejects.toBeInstanceOf(GitHubIntegrationError);
   });
 
+  it("rejects an installation that does not belong to this GitHub App", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(response({ message: "not found" }, 404));
+    const service = new GitHubApiService(config, fetcher, appAuth);
+
+    await expect(
+      service.verifyInstallationForUser(42n, "ephemeral-user-token")
+    ).rejects.toMatchObject({ failureCode: "GITHUB_AUTHORIZATION_FAILED" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("verifies both the app installation and user association", async () => {
     const fetcher = vi
       .fn()
@@ -136,6 +148,67 @@ describe("GitHubApiService", () => {
     expect(fetcher.mock.calls[1]?.[0]).toContain(
       "/user/installations/42/repositories"
     );
+  });
+
+  it("finds and re-verifies one existing installation accessible to the user", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(
+        response({
+          total_count: 1,
+          installations: [{ id: 42, app_slug: config.slug }],
+        })
+      )
+      .mockResolvedValueOnce(
+        response({
+          id: 42,
+          account: { id: 7, login: "safe-account", type: "User" },
+        })
+      )
+      .mockResolvedValueOnce(response({ total_count: 1, repositories: [] }));
+    const service = new GitHubApiService(config, fetcher, appAuth);
+
+    await expect(
+      service.findReusableInstallationForUser("ephemeral-user-token")
+    ).resolves.toEqual({
+      installationId: 42n,
+      accountId: 7n,
+      accountLogin: "safe-account",
+      accountType: "User",
+    });
+    expect(fetcher.mock.calls[0]?.[0]).toContain(
+      "/user/installations?per_page=100&page=1"
+    );
+    expect(fetcher.mock.calls[1]?.[0]).toContain("/app/installations/42");
+    expect(fetcher.mock.calls[2]?.[0]).toContain(
+      "/user/installations/42/repositories"
+    );
+  });
+
+  it("rejects reconnect when the user has no existing installation", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(response({ total_count: 0, installations: [] }));
+    const service = new GitHubApiService(config, fetcher, appAuth);
+
+    await expect(
+      service.findReusableInstallationForUser("ephemeral-user-token")
+    ).rejects.toMatchObject({ failureCode: "GITHUB_AUTHORIZATION_FAILED" });
+  });
+
+  it("rejects a reconnect discovery response for another GitHub App", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      response({
+        total_count: 1,
+        installations: [{ id: 42, app_slug: "another-app" }],
+      })
+    );
+    const service = new GitHubApiService(config, fetcher, appAuth);
+
+    await expect(
+      service.findReusableInstallationForUser("ephemeral-user-token")
+    ).rejects.toMatchObject({ failureCode: "GITHUB_AUTHORIZATION_FAILED" });
+    expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
   it("lists only installation-authorized repositories without returning the token", async () => {
@@ -215,6 +288,44 @@ describe("GitHubApiService", () => {
     expect(
       result.commits.every((commit) => !("token" in commit))
     ).toBe(true);
+  });
+
+  it("treats GitHub's explicit empty-repository response as an empty commit list", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response({ token: "ephemeral-token" }))
+      .mockResolvedValueOnce(response(repositoryBody()))
+      .mockResolvedValueOnce(
+        response({ message: "Git Repository is empty." }, 409)
+      );
+    const service = new GitHubApiService(config, fetcher, appAuth);
+
+    await expect(
+      service.listRepositoryCommitSummaries(42n, 99n, {
+        since: new Date("2026-08-19T12:00:00.000Z"),
+        until: new Date("2026-09-18T12:00:00.000Z"),
+      })
+    ).resolves.toMatchObject({ attemptCount: 3, commits: [] });
+  });
+
+  it("keeps unrelated commit-list conflicts terminal", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValueOnce(response({ token: "ephemeral-token" }))
+      .mockResolvedValueOnce(response(repositoryBody()))
+      .mockResolvedValueOnce(response({ message: "synthetic conflict" }, 409));
+    const service = new GitHubApiService(config, fetcher, appAuth);
+
+    await expect(
+      service.listRepositoryCommitSummaries(42n, 99n, {
+        since: new Date("2026-08-19T12:00:00.000Z"),
+        until: new Date("2026-09-18T12:00:00.000Z"),
+      })
+    ).rejects.toMatchObject({
+      attemptCount: 3,
+      failureCode: "GITHUB_AUTHORIZATION_FAILED",
+      retryable: false,
+    });
   });
 
   it("fails closed when commit pagination exceeds the 500-item boundary", async () => {

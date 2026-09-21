@@ -250,6 +250,58 @@ export class GitHubApiService {
     };
   }
 
+  async findReusableInstallationForUser(
+    userAccessToken: string
+  ): Promise<VerifiedGitHubInstallation> {
+    const installationIds: bigint[] = [];
+
+    for (let page = 1; page <= maxRepositoryPages; page += 1) {
+      const response = await this.apiRequest(
+        `/user/installations?per_page=100&page=${page}`,
+        userAccessToken
+      );
+      const body = await this.readJson(response);
+      if (
+        !isRecord(body) ||
+        !Array.isArray(body.installations) ||
+        body.installations.length > 100 ||
+        nonnegativeInteger(body.total_count) === null
+      ) {
+        throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+      }
+
+      for (const value of body.installations) {
+        if (!isRecord(value) || value.app_slug !== this.config.slug) {
+          throw new GitHubIntegrationError("GITHUB_AUTHORIZATION_FAILED");
+        }
+        const installationId = positiveBigInt(value.id);
+        if (!installationId || installationIds.includes(installationId)) {
+          throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
+        }
+        installationIds.push(installationId);
+      }
+
+      if (
+        body.installations.length < 100 ||
+        installationIds.length >= (body.total_count as number)
+      ) {
+        break;
+      }
+      if (page === maxRepositoryPages) {
+        throw new GitHubIntegrationError("GITHUB_SAFETY_LIMIT_EXCEEDED");
+      }
+    }
+
+    if (installationIds.length !== 1) {
+      throw new GitHubIntegrationError("GITHUB_AUTHORIZATION_FAILED");
+    }
+
+    return this.verifyInstallationForUser(
+      installationIds[0]!,
+      userAccessToken
+    );
+  }
+
   async listInstallationRepositories(
     installationId: bigint
   ): Promise<readonly AuthorizedGitHubRepository[]> {
@@ -313,8 +365,24 @@ export class GitHubApiService {
           `/repos/${encodeURIComponent(repository.owner)}/${encodeURIComponent(repository.name)}/commits?${query.toString()}`,
           installationToken,
           {},
-          tracker
+          tracker,
+          [409]
         );
+        if (response.status === 409) {
+          const body = await this.readJson(response);
+          if (
+            commits.length === 0 &&
+            isRecord(body) &&
+            body.message === "Git Repository is empty."
+          ) {
+            return { attemptCount: tracker.count, commits, repository };
+          }
+          throw new GitHubIntegrationError(
+            "GITHUB_AUTHORIZATION_FAILED",
+            false,
+            tracker.count
+          );
+        }
         const body = await this.readJson(response);
         if (!Array.isArray(body) || body.length > commitPageSize) {
           throw new GitHubIntegrationError("GITHUB_RESPONSE_INVALID");
@@ -492,7 +560,8 @@ export class GitHubApiService {
     path: string,
     token: string,
     init: RequestInit = {},
-    tracker: ProviderAttemptTracker = { count: 0 }
+    tracker: ProviderAttemptTracker = { count: 0 },
+    acceptedStatuses: readonly number[] = []
   ): Promise<Response> {
     for (
       let attempt = 1;
@@ -521,7 +590,7 @@ export class GitHubApiService {
         continue;
       }
 
-      if (response.ok) {
+      if (response.ok || acceptedStatuses.includes(response.status)) {
         return response;
       }
 
@@ -754,7 +823,8 @@ export class GitHubApiService {
       files,
       headBranch,
       mergeCommitSha:
-        detail.merge_commit_sha === null
+        detail.merge_commit_sha === null ||
+        detail.merge_commit_sha === undefined
           ? null
           : requireSha(detail.merge_commit_sha),
       mergedAt,

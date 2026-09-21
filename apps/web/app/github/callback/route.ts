@@ -17,7 +17,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const installationId = url.searchParams.get("installation_id");
   const state = url.searchParams.get("state");
 
-  if (!code || !installationId || !state) {
+  if (!code || !state) {
     return NextResponse.redirect(
       destination("/github/connect?error=invalid_callback")
     );
@@ -28,7 +28,11 @@ export async function GET(request: Request): Promise<NextResponse> {
       "/github/connections/complete",
       {
         method: "POST",
-        body: JSON.stringify({ code, installationId, state }),
+        body: JSON.stringify({
+          code,
+          installationId: installationId || undefined,
+          state,
+        }),
       }
     );
     const target = destination("/github/connect");

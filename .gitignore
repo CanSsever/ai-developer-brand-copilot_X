@@ -5,6 +5,7 @@ node_modules.store-mismatch-backup/
 
 # Build output
 .next/
+.next-e2e/
 dist/
 coverage/
 playwright-report/

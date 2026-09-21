@@ -63,7 +63,7 @@ export class GitHubController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() body: Partial<GitHubConnectionStartRequest>
   ) {
-    return this.connections.start(user.id, body?.projectId);
+    return this.connections.start(user.id, body?.projectId, body?.mode);
   }
 
   @Post("github/connections/complete")

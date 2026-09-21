@@ -245,6 +245,31 @@ const apiServer = createServer(async (request, response) => {
   }
 
   if (
+    request.method === "GET" &&
+    url.pathname === `/github/connections/${connectionId}/repositories`
+  ) {
+    if (
+      url.searchParams.get("projectId") !== projectId ||
+      !connections.some((connection) => connection.id === connectionId)
+    ) {
+      return sendJson(response, 404, {
+        code: "NOT_FOUND",
+        message: "GitHub connection not found",
+      });
+    }
+    return sendJson(response, 200, [
+      {
+        id: "99",
+        owner: "fixture-owner",
+        name: "fixture-repository",
+        fullName: "fixture-owner/fixture-repository",
+        defaultBranch: "main",
+        isPrivate: true,
+      },
+    ]);
+  }
+
+  if (
     request.method === "POST" &&
     url.pathname === `/projects/${projectId}/sync-runs`
   ) {

@@ -14,6 +14,7 @@ import type {
   DisconnectConnectionResponse,
   GitHubConnectionCompleteResponse,
   GitHubConnectionStartResponse,
+  GitHubConnectionStartMode,
   GitHubConnectionSummary,
   ProjectSummary,
 } from "@developer-brand-copilot/contracts";
@@ -55,6 +56,12 @@ function requireProviderId(value: unknown, field: string): bigint {
     // Converted to a safe validation error below.
   }
   throw new BadRequestException(`${field} is invalid`);
+}
+
+function requireStartMode(value: unknown): GitHubConnectionStartMode {
+  if (value === undefined || value === "install") return "install";
+  if (value === "reconnect") return "reconnect";
+  throw new BadRequestException("mode is invalid");
 }
 
 @Injectable()
@@ -170,9 +177,11 @@ export class GitHubConnectionService {
 
   async start(
     userId: string,
-    projectIdValue: unknown
+    projectIdValue: unknown,
+    modeValue?: unknown
   ): Promise<GitHubConnectionStartResponse> {
     const projectId = requireUuid(projectIdValue, "projectId");
+    const mode = requireStartMode(modeValue);
     await this.requireOwnedProject(userId, projectId);
     const state = randomBytes(32).toString("base64url");
     const digest = stateDigest(state);
@@ -191,9 +200,14 @@ export class GitHubConnectionService {
       }),
     ]);
 
-    const installationUrl = new URL(
-      `https://github.com/apps/${this.config.slug}/installations/new`
-    );
+    const installationUrl =
+      mode === "reconnect"
+        ? new URL("https://github.com/login/oauth/authorize")
+        : new URL(`https://github.com/apps/${this.config.slug}/installations/new`);
+    if (mode === "reconnect") {
+      installationUrl.searchParams.set("client_id", this.config.clientId);
+      installationUrl.searchParams.set("redirect_uri", this.config.callbackUrl);
+    }
     installationUrl.searchParams.set("state", state);
 
     return { installationUrl: installationUrl.toString() };
@@ -205,21 +219,27 @@ export class GitHubConnectionService {
   ): Promise<GitHubConnectionCompleteResponse> {
     const code = requireText(input.code, "code");
     const state = requireText(input.state, "state");
-    const installationId = requireProviderId(
-      input.installationId,
-      "installationId"
-    );
     const attempt = await this.consumeAttempt(userId, state);
+    const installationId =
+      input.installationId === undefined
+        ? null
+        : requireProviderId(input.installationId, "installationId");
 
     try {
       const userAccessToken = await this.github.exchangeUserCode(code);
-      const installation = await this.github.verifyInstallationForUser(
-        installationId,
-        userAccessToken
-      );
+      const installation =
+        installationId === null
+          ? await this.github.findReusableInstallationForUser(userAccessToken)
+          : await this.github.verifyInstallationForUser(
+              installationId,
+              userAccessToken
+            );
       const connection = await this.prisma.gitHubConnection.upsert({
         where: {
-          userId_providerInstallationId: { userId, providerInstallationId: installationId },
+          userId_providerInstallationId: {
+            userId,
+            providerInstallationId: installation.installationId,
+          },
         },
         create: {
           userId,

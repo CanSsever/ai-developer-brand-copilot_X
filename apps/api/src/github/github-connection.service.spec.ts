@@ -46,6 +46,7 @@ function harness() {
   };
   const github = {
     exchangeUserCode: vi.fn().mockResolvedValue("ephemeral-user-token"),
+    findReusableInstallationForUser: vi.fn(),
     verifyInstallationForUser: vi.fn(),
     listInstallationRepositories: vi.fn(),
   };
@@ -192,6 +193,34 @@ describe("GitHubConnectionService", () => {
     expect(createCall.data.stateDigest).not.toBe(state);
   });
 
+  it("starts an existing-installation reconnect with the same protected state", async () => {
+    const { prisma, service } = harness();
+    const result = await service.start(userId, projectId, "reconnect");
+    const url = new URL(result.installationUrl);
+    const state = url.searchParams.get("state");
+    const createCall = prisma.gitHubConnectionAttempt.create.mock.calls[0]![0];
+
+    expect(url.origin + url.pathname).toBe(
+      "https://github.com/login/oauth/authorize"
+    );
+    expect(url.searchParams.get("client_id")).toBe("Iv1.safe-test-client");
+    expect(url.searchParams.get("redirect_uri")).toBe(
+      "http://localhost:3000/github/callback"
+    );
+    expect(state).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(createCall.data).toMatchObject({ userId, projectId });
+    expect(createCall.data.stateDigest).not.toBe(state);
+  });
+
+  it("rejects an unsupported connection mode before creating state", async () => {
+    const { prisma, service } = harness();
+
+    await expect(
+      service.start(userId, projectId, "unsafe-mode")
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   it("rejects a Project not owned by the authenticated user", async () => {
     const { prisma, service } = harness();
     prisma.project.findFirst.mockResolvedValue(null);
@@ -236,6 +265,36 @@ describe("GitHubConnectionService", () => {
     expect(github.exchangeUserCode).not.toHaveBeenCalled();
   });
 
+  it("keeps the callback bound to the Project stored with its state", async () => {
+    const { github, prisma, service } = harness();
+    prisma.gitHubConnectionAttempt.findUnique.mockResolvedValue({
+      id: "523e4567-e89b-42d3-a456-426614174000",
+      userId,
+      projectId,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    github.findReusableInstallationForUser.mockResolvedValue({
+      installationId: 42n,
+      accountId: 7n,
+      accountLogin: "safe-account",
+      accountType: "User",
+    });
+    prisma.gitHubConnection.upsert.mockResolvedValue({
+      id: connectionId,
+      accountLogin: "safe-account",
+      accountType: "User",
+      status: "active",
+    });
+
+    const result = await service.complete(userId, {
+      code: "code",
+      state: "state",
+      projectId: "623e4567-e89b-42d3-a456-426614174000",
+    } as { code: string; state: string; projectId: string });
+
+    expect(result.projectId).toBe(projectId);
+  });
+
   it("consumes state once and refuses replay", async () => {
     const { github, prisma, service } = harness();
     prisma.gitHubConnectionAttempt.findUnique.mockResolvedValue({
@@ -266,6 +325,26 @@ describe("GitHubConnectionService", () => {
       service.complete(userId, { code: "code", installationId: "42", state: "state" })
     ).rejects.toBeInstanceOf(BadGatewayException);
     expect(prisma.gitHubConnection.upsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects a malformed installation id after consuming state but before GitHub exchange", async () => {
+    const { github, prisma, service } = harness();
+    prisma.gitHubConnectionAttempt.findUnique.mockResolvedValue({
+      id: "523e4567-e89b-42d3-a456-426614174000",
+      userId,
+      projectId,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await expect(
+      service.complete(userId, {
+        code: "code",
+        installationId: "not-an-id",
+        state: "state",
+      })
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.gitHubConnectionAttempt.delete).toHaveBeenCalledTimes(1);
+    expect(github.exchangeUserCode).not.toHaveBeenCalled();
   });
 
   it("persists verified installation metadata without either ephemeral token", async () => {
@@ -301,6 +380,108 @@ describe("GitHubConnectionService", () => {
     expect(data.create).not.toHaveProperty("accessToken");
     expect(data.create).not.toHaveProperty("refreshToken");
     expect(data.update).not.toHaveProperty("token");
+  });
+
+  it("reconnects one existing installation without requiring an installation id", async () => {
+    const { github, prisma, service } = harness();
+    prisma.gitHubConnectionAttempt.findUnique.mockResolvedValue({
+      id: "523e4567-e89b-42d3-a456-426614174000",
+      userId,
+      projectId,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    github.findReusableInstallationForUser.mockResolvedValue({
+      installationId: 42n,
+      accountId: 7n,
+      accountLogin: "safe-account",
+      accountType: "User",
+    });
+    prisma.gitHubConnection.upsert.mockResolvedValue({
+      id: connectionId,
+      accountLogin: "safe-account",
+      accountType: "User",
+      status: "active",
+    });
+
+    await expect(
+      service.complete(userId, {
+        code: "one-time-code",
+        state: "opaque-state",
+      })
+    ).resolves.toMatchObject({ projectId, connection: { id: connectionId } });
+    expect(github.findReusableInstallationForUser).toHaveBeenCalledWith(
+      "ephemeral-user-token"
+    );
+    expect(github.verifyInstallationForUser).not.toHaveBeenCalled();
+    expect(prisma.gitHubConnection.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          userId_providerInstallationId: {
+            userId,
+            providerInstallationId: 42n,
+          },
+        },
+      })
+    );
+  });
+
+  it("uses idempotent upsert when the verified installation is already active", async () => {
+    const { github, prisma, service } = harness();
+    prisma.gitHubConnectionAttempt.findUnique.mockResolvedValue({
+      id: "523e4567-e89b-42d3-a456-426614174000",
+      userId,
+      projectId,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    github.findReusableInstallationForUser.mockResolvedValue({
+      installationId: 42n,
+      accountId: 7n,
+      accountLogin: "safe-account",
+      accountType: "User",
+    });
+    prisma.gitHubConnection.upsert.mockResolvedValue({
+      id: connectionId,
+      accountLogin: "safe-account",
+      accountType: "User",
+      status: "active",
+    });
+
+    await service.complete(userId, { code: "code", state: "state" });
+
+    expect(prisma.gitHubConnection.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.gitHubConnection.upsert.mock.calls[0]![0].create).toMatchObject({
+      providerInstallationId: 42n,
+    });
+    expect(prisma.gitHubConnection.upsert.mock.calls[0]![0].update).not.toHaveProperty(
+      "providerInstallationId"
+    );
+  });
+
+  it("discovers authorized repositories through the restored connection", async () => {
+    const { github, service } = harness();
+    github.listInstallationRepositories.mockResolvedValue([
+      {
+        id: 99n,
+        owner: "safe-owner",
+        name: "projectXTest",
+        defaultBranch: "main",
+        isPrivate: true,
+      },
+    ]);
+
+    await expect(
+      service.listAuthorizedRepositories(userId, connectionId, projectId)
+    ).resolves.toEqual([
+      {
+        id: "99",
+        owner: "safe-owner",
+        name: "projectXTest",
+        fullName: "safe-owner/projectXTest",
+        defaultBranch: "main",
+        isPrivate: true,
+      },
+    ]);
+    expect(github.listInstallationRepositories).toHaveBeenCalledWith(42n);
   });
 
   it("rejects a repository ID absent from the installation-authorized list", async () => {

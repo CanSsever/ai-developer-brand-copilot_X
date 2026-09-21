@@ -38,7 +38,10 @@ export async function startGitHubConnection(formData: FormData): Promise<never> 
       "/github/connections/start",
       {
         method: "POST",
-        body: JSON.stringify({ projectId: formText(formData, "projectId") }),
+        body: JSON.stringify({
+          projectId: formText(formData, "projectId"),
+          mode: formText(formData, "mode") || undefined,
+        }),
       }
     );
     redirect(result.installationUrl);
