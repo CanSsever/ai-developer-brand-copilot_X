@@ -5,6 +5,7 @@ import type { ApiEnv } from "@developer-brand-copilot/config";
 import { AppController } from "./app.controller";
 import { AuthModule } from "./auth/auth.module";
 import { DatabaseModule } from "./database/database.module";
+import { DevelopmentIntelligenceModule } from "./development-intelligence/development-intelligence.module";
 import { GitHubModule } from "./github/github.module";
 import { ObservabilityModule } from "./observability/observability.module";
 
@@ -16,6 +17,7 @@ export class AppModule {
       imports: [
         ObservabilityModule,
         DatabaseModule.register(config.DATABASE_URL),
+        DevelopmentIntelligenceModule,
         AuthModule.register({
           url: config.SUPABASE_URL,
           publishableKey: config.SUPABASE_PUBLISHABLE_KEY,

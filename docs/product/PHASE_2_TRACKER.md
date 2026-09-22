@@ -92,9 +92,67 @@ PDR semantics used by the foundation:
 
 - [x] Task 2.1 VERIFIED COMPLETE
 
+## Task 2.2 — Evidence Selection & Grouping
+
+### PDR Grouping Interpretation
+
+- [x] grouping is deterministic evidence organization and does not create semantic DevelopmentEvents
+- [x] merged pull requests are the strongest available grouping boundary
+- [x] explicitly linked commits and a selected merge commit remain supporting evidence in the PR-backed group
+- [x] PR-linked commits are not duplicated as unrelated standalone candidates
+- [x] a raw commit may overlap multiple PR-backed candidates only when GitHub explicitly links it to multiple merged pull requests
+- [x] merge commits do not independently create duplicate candidates when selected constituent commits are already represented
+- [x] the PDR requires multi-commit grouping but does not prescribe a detailed heuristic, so ambiguous standalone evidence is handled conservatively
+
+### Evidence Selection
+
+- [x] selection requires one owned Project and its active ConnectedRepository and active GitHubConnection
+- [x] callers supply a fixed evaluation boundary and source-window start; the window is limited to 30 days
+- [x] selection is capped at 500 commits and 500 merged pull requests and fails instead of silently truncating
+- [x] only non-orphaned commits inside the fixed window are eligible
+- [x] commits with recognized case-insensitive GitHub `[bot]` login suffixes are excluded by default; commits with no provider login remain eligible
+- [x] only closed merged-pull-request evidence inside the fixed window is eligible
+- [x] already considered raw evidence may be regrouped deterministically; Task 2.5 owns durable reprocessing orchestration
+
+### Deterministic Grouping Rules
+
+- [x] PR-backed candidates are built before standalone candidates from provider-linked commit SHAs plus selected merge-commit evidence
+- [x] remaining standalone commits group only across a direct parent/child edge, exact normalized file-path overlap, and at most 24 hours of separation
+- [x] temporal proximity or file overlap alone never groups standalone commits
+- [x] input order does not affect candidate membership, evidence ordering, group ordering, or keys
+- [x] equal timestamps use stable provider identity and internal-ID tie-breakers
+- [x] every candidate is isolated to one Project and one ConnectedRepository
+- [x] grouping version is `evidence-grouping-v1`
+- [x] candidate keys are SHA-256 hashes over grouping version, Project ID, ConnectedRepository ID, sorted commit SHAs, and sorted provider pull-request IDs
+
+### Output, Persistence, and Privacy
+
+- [x] the internal candidate contract contains only group key, Project/repository scope, ordered commit and pull-request evidence IDs, evidence time range, grouping version, and structural reason
+- [x] no semantic title, summary, type, score, confidence, or interpreted content is produced
+- [x] candidate groups are deterministic transient internal values; no table or migration was added because durable interpretation, lineage, and replay foundations already belong to DevelopmentEvent and Task 2.5
+- [x] no pending or fake DevelopmentEvent shell is created; Task 2.3 owns semantic interpretation
+- [x] no source, diff, patch, file content, provider payload, message, PR text, file path, token, or credential enters candidate output or logs
+- [x] logs contain only internal Project ID, safe counts, and grouping version
+- [x] the component performs no provider, network, OpenAI, or other LLM call and is not connected to the Phase 1 worker
+
+### Verification
+
+- [x] 21 focused synthetic Task 2.2 tests pass
+- [x] all 263 repository unit/integration tests pass: 228 API, 23 web, and 12 configuration tests
+- [x] all 11 browser E2E tests pass
+- [x] lint, typecheck, and production build pass
+- [x] Prisma client generation and schema validation pass
+- [x] database connectivity passes; all 8 migrations are applied and the schema is up to date
+- [x] Gitleaks history and trackable-content scans pass with no leaks
+- [x] Phase 1 ingestion and Task 2.1 persistence regressions remain green
+- [x] no schema change or migration was required
+
+### Task Status
+
+- [x] Task 2.2 VERIFIED COMPLETE
+
 ## Remaining Phase 2 Tasks
 
-- [ ] Task 2.2 — Evidence Selection & Grouping: NOT STARTED
 - [ ] Task 2.3 — Development Event Interpretation: NOT STARTED
 - [ ] Task 2.4 — Project State Projection: NOT STARTED
 - [ ] Task 2.5 — Reprocessing, Idempotency & Worker Integration: NOT STARTED
