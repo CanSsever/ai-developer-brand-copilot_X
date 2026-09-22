@@ -3,14 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "predev": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
+    "predev": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build && pnpm --filter @developer-brand-copilot/ai build",
     "dev": "nest start --watch",
-    "prebuild": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
+    "prebuild": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build && pnpm --filter @developer-brand-copilot/ai build",
     "build": "nest build",
     "start": "node dist/main.js",
-    "pretypecheck": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
+    "pretypecheck": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build && pnpm --filter @developer-brand-copilot/ai build",
     "typecheck": "tsc --noEmit",
-    "pretest": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build",
+    "pretest": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build && pnpm --filter @developer-brand-copilot/ai build",
     "test": "vitest run",
     "db:generate": "prisma generate --config prisma.config.ts",
     "db:validate": "prisma validate --config prisma.config.ts",
@@ -22,6 +22,7 @@
     "db:check": "node dist/database/check-database.js"
   },
   "dependencies": {
+    "@developer-brand-copilot/ai": "workspace:*",
     "@developer-brand-copilot/config": "workspace:*",
     "@developer-brand-copilot/contracts": "workspace:*",
     "@nestjs/common": "^11.1.28",

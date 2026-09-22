@@ -19,6 +19,8 @@ const testConfig = {
   GITHUB_APP_PRIVATE_KEY:
     "-----BEGIN PRIVATE KEY-----\nsafe-test-key-material\n-----END PRIVATE KEY-----",
   GITHUB_APP_CALLBACK_URL: "http://localhost:3000/github/callback",
+  OPENAI_API_KEY: "synthetic_openai_api_key_for_tests",
+  OPENAI_INTERPRETATION_MODEL: "configured-test-model",
 };
 
 describe("GET /health", () => {

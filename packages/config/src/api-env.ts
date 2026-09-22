@@ -90,6 +90,8 @@ const apiEnvSchema = z.object({
     .regex(/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/),
   GITHUB_APP_PRIVATE_KEY: githubPrivateKey,
   GITHUB_APP_CALLBACK_URL: githubCallbackUrl,
+  OPENAI_API_KEY: z.string().trim().min(20),
+  OPENAI_INTERPRETATION_MODEL: z.string().trim().min(1).max(100),
 });
 
 const databaseEnvSchema = apiEnvSchema.pick({

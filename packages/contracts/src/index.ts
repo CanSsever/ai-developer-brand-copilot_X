@@ -5,6 +5,7 @@ export type {
   DevelopmentEventStatus,
   DevelopmentEventType,
 } from "./development-intelligence.js";
+export { developmentEventTypes } from "./development-intelligence.js";
 export type {
   AuthorizedRepositorySummary,
   ConnectedRepositorySummary,

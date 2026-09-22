@@ -9,6 +9,8 @@ const sensitiveKeys = new Set([
   "refreshtoken",
   "idtoken",
   "token",
+  "apikey",
+  "openaiapikey",
   "clientsecret",
   "privatekey",
   "password",
@@ -37,6 +39,7 @@ function isSensitiveKey(key: string): boolean {
     sensitiveKeys.has(normalized) ||
     normalized.endsWith("accesstoken") ||
     normalized.endsWith("refreshtoken") ||
+    normalized.endsWith("apikey") ||
     normalized.endsWith("clientsecret") ||
     normalized.endsWith("privatekey") ||
     normalized.endsWith("password")

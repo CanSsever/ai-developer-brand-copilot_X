@@ -27,6 +27,7 @@ model Project {
   connectedRepository      ConnectedRepository?
   gitHubConnectionAttempts GitHubConnectionAttempt[]
   developmentEvents        DevelopmentEvent[]
+  aiExecutions             AIExecution[]
   projectState             ProjectState?
 
   @@index([userId])
@@ -249,6 +250,23 @@ enum DevelopmentEventStatus {
   rejected
 }
 
+enum AIExecutionStage {
+  development_event_interpretation
+}
+
+enum AIExecutionStatus {
+  running
+  succeeded
+  rejected
+  failed
+}
+
+enum AIValidationStatus {
+  pending
+  valid
+  invalid
+}
+
 model DevelopmentEvent {
   id                       String                                @id @default(uuid()) @db.Uuid
   projectId                String                                @db.Uuid
@@ -274,11 +292,42 @@ model DevelopmentEvent {
   commitEvidence           DevelopmentEventCommitEvidence[]
   pullRequestEvidence      DevelopmentEventPullRequestEvidence[]
   projectStateVersionLinks ProjectStateVersionEvent[]
+  aiExecutions             AIExecution[]
 
   @@unique([projectId, eventKey, extractionVersion])
   @@index([projectId, occurredAt])
   @@index([projectId, status])
   @@index([projectId, inputFingerprint])
+}
+
+model AIExecution {
+  id                            String             @id @default(uuid()) @db.Uuid
+  projectId                     String             @db.Uuid
+  developmentEventId            String?            @db.Uuid
+  stage                         AIExecutionStage
+  status                        AIExecutionStatus  @default(running)
+  inputFingerprint              String             @db.VarChar(64)
+  model                         String             @db.VarChar(100)
+  modelConfiguration            Json
+  modelConfigurationFingerprint String             @db.VarChar(64)
+  promptVersion                 String             @db.VarChar(64)
+  schemaVersion                 String             @db.VarChar(64)
+  attemptNumber                 Int
+  validationStatus              AIValidationStatus @default(pending)
+  failureCode                   String?            @db.VarChar(64)
+  startedAt                     DateTime           @db.Timestamptz(3)
+  completedAt                   DateTime?          @db.Timestamptz(3)
+  latencyMs                     Int?
+  inputTokens                   Int?
+  outputTokens                  Int?
+  createdAt                     DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt                     DateTime           @default(now()) @updatedAt @db.Timestamptz(3)
+  project                       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvent              DevelopmentEvent?  @relation(fields: [developmentEventId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@unique([projectId, stage, inputFingerprint, promptVersion, modelConfigurationFingerprint, attemptNumber])
+  @@index([projectId, stage, createdAt])
+  @@index([developmentEventId])
 }
 
 model DevelopmentEventCommitEvidence {

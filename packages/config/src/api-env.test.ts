@@ -17,6 +17,11 @@ const validGitHubConfig = {
   GITHUB_APP_CALLBACK_URL: "http://localhost:3000/github/callback",
 };
 
+const validAiConfig = {
+  OPENAI_API_KEY: "synthetic_openai_api_key_for_tests",
+  OPENAI_INTERPRETATION_MODEL: "configured-test-model",
+};
+
 describe("parseApiEnv", () => {
   it("parses valid API configuration into typed values", () => {
     expect(parseApiEnv({
@@ -26,6 +31,7 @@ describe("parseApiEnv", () => {
       DIRECT_URL: "postgresql://user:password@localhost:5432/app",
       ...validAuthConfig,
       ...validGitHubConfig,
+      ...validAiConfig,
     })).toEqual({
       NODE_ENV: "test",
       PORT: 3001,
@@ -33,6 +39,7 @@ describe("parseApiEnv", () => {
       DIRECT_URL: "postgresql://user:password@localhost:5432/app",
       ...validAuthConfig,
       ...validGitHubConfig,
+      ...validAiConfig,
       GITHUB_APP_PRIVATE_KEY: validGitHubConfig.GITHUB_APP_PRIVATE_KEY.replace(
         /\\n/g,
         "\n"
@@ -48,6 +55,7 @@ describe("parseApiEnv", () => {
         DIRECT_URL: "postgresql://user:password@localhost:5432/app",
         ...validAuthConfig,
         ...validGitHubConfig,
+        ...validAiConfig,
       })
     ).toThrow(EnvironmentValidationError);
   });
@@ -60,6 +68,7 @@ describe("parseApiEnv", () => {
         DIRECT_URL: "postgresql://user:password@localhost:5432/app",
         ...validAuthConfig,
         ...validGitHubConfig,
+        ...validAiConfig,
       })
     ).toThrow(EnvironmentValidationError);
   });
@@ -88,6 +97,7 @@ describe("parseApiEnv", () => {
         SUPABASE_URL: "http://project-ref.supabase.co/path",
         SUPABASE_PUBLISHABLE_KEY: "short",
         ...validGitHubConfig,
+        ...validAiConfig,
       })
     ).toThrow(EnvironmentValidationError);
   });
@@ -100,6 +110,7 @@ describe("parseApiEnv", () => {
       DIRECT_URL: "postgresql://user:password@localhost:5432/app",
       ...validAuthConfig,
       ...validGitHubConfig,
+      ...validAiConfig,
     };
 
     expect(parseApiEnv(input)).toMatchObject({
@@ -114,6 +125,21 @@ describe("parseApiEnv", () => {
     expect(() =>
       parseApiEnv({ ...input, GITHUB_APP_CALLBACK_URL: "http://example.com/callback" })
     ).toThrow(EnvironmentValidationError);
+  });
+
+  it("requires backend-only OpenAI interpretation configuration", () => {
+    const input = {
+      DATABASE_URL: "postgresql://user:password@localhost:5432/app",
+      DIRECT_URL: "postgresql://user:password@localhost:5432/app",
+      ...validAuthConfig,
+      ...validGitHubConfig,
+    };
+
+    expect(() => parseApiEnv(input)).toThrow(EnvironmentValidationError);
+    expect(
+      parseApiEnv({ ...input, ...validAiConfig })
+        .OPENAI_INTERPRETATION_MODEL
+    ).toBe(validAiConfig.OPENAI_INTERPRETATION_MODEL);
   });
 });
 

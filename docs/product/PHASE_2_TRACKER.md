@@ -151,9 +151,57 @@ PDR semantics used by the foundation:
 
 - [x] Task 2.2 VERIFIED COMPLETE
 
+## Task 2.3 — Development Event Interpretation
+
+### PDR Interpretation Contract
+
+- [x] the PDR requires model-assisted semantic interpretation; the existing backend OpenAI/model boundary is used rather than introducing another provider
+- [x] interpretation accepts only a candidate reselected by the trusted Task 2.2 grouping service; callers cannot inject arbitrary repository evidence
+- [x] the structured result uses the exact ten-value DevelopmentEvent taxonomy
+- [x] the model supplies only semantic type, title, summary, importance score, content-potential score, confidence, technologies, and explicit evidence references
+- [x] deterministic application code supplies event identity, occurrence time, lifecycle status, feature IDs, fingerprints, extraction version, provenance links, and supersession lineage
+- [x] confidence below `0.60` is persisted as `rejected` for later inspection and never supersedes an active interpretation
+- [x] a validated `insufficient_evidence` decision creates no DevelopmentEvent
+
+### Backend AI Boundary and Privacy
+
+- [x] OpenAI Responses API calls are backend-only, use the configured server-side model and API key, set `store: false`, and request a strict JSON Schema response
+- [x] evidence is minimized to bounded commit messages, merged-PR title/body summary, structural file paths/metadata, timestamps, change totals, and internal evidence identifiers
+- [x] source contents, diffs, patches, raw provider payloads, credentials, tokens, cookies, private keys, and database secrets are never included
+- [x] model evidence is treated as untrusted data and cannot override system instructions
+- [x] prompts containing repository evidence and raw model responses are neither logged nor persisted
+- [x] routine logs contain only safe identifiers, versions, fingerprints, counts, and normalized failure codes
+- [x] central observability redaction recognizes generic and OpenAI API-key field names
+
+### Validation, Audit, and Reprocessing
+
+- [x] every model attempt creates an `AIExecution` audit row before the request and records only required stage, model configuration, version, validation, timing, token-count, and safe failure metadata
+- [x] prompt version is `development-event-prompt-v1` and schema version is `development-event-schema-v1`
+- [x] input fingerprints cover canonical minimized evidence and the grouping boundary; extraction versions cover prompt, schema, and safe model configuration
+- [x] malformed, out-of-taxonomy, out-of-range, or unsupported-evidence output receives at most one constrained repair attempt and otherwise fails safely
+- [x] repeated interpretation under the same extraction boundary reuses the existing event without another model call
+- [x] a materially new extraction version creates a new event and supersedes the prior active event without rewriting its historical semantic fields
+- [x] commit and merged-PR provenance is persisted transactionally with the validated DevelopmentEvent
+- [x] tenant ownership and cross-Project event linkage are protected by database constraints and authenticated read-only RLS
+
+### Scope and Verification
+
+- [x] interpretation remains an isolated callable backend capability; no worker wiring, ProjectState projection, browser endpoint, ContentOpportunity, recommendation, drafting, or Phase 3 behavior was added
+- [x] automated model tests are deterministic and mocked; no live OpenAI call is required or was made
+- [x] 55 focused Task 2.3 tests were added across interpretation, provider transport, strict output validation, configuration, and database audit controls
+- [x] all 318 repository unit/integration tests pass: 282 API, 23 web, and 13 configuration tests
+- [x] all 11 browser E2E tests pass
+- [x] lint, typecheck, production build, Prisma generation, and Prisma schema validation pass
+- [x] database connectivity passes; all 9 migrations are applied and the schema is up to date
+- [x] Gitleaks history and trackable-content scans pass with no leaks
+- [x] Task 2.2 grouping boundaries and Phase 1 ingestion regressions remain green
+
+### Task Status
+
+- [x] Task 2.3 VERIFIED COMPLETE
+
 ## Remaining Phase 2 Tasks
 
-- [ ] Task 2.3 — Development Event Interpretation: NOT STARTED
 - [ ] Task 2.4 — Project State Projection: NOT STARTED
 - [ ] Task 2.5 — Reprocessing, Idempotency & Worker Integration: NOT STARTED
 - [ ] Task 2.6 — Intelligence Read Model / Internal Inspection: NOT STARTED

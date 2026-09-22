@@ -17,7 +17,10 @@ export class AppModule {
       imports: [
         ObservabilityModule,
         DatabaseModule.register(config.DATABASE_URL),
-        DevelopmentIntelligenceModule,
+        DevelopmentIntelligenceModule.register({
+          apiKey: config.OPENAI_API_KEY,
+          model: config.OPENAI_INTERPRETATION_MODEL,
+        }),
         AuthModule.register({
           url: config.SUPABASE_URL,
           publishableKey: config.SUPABASE_PUBLISHABLE_KEY,

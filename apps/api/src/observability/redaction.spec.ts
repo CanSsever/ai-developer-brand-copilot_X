@@ -12,6 +12,8 @@ describe("observability redaction", () => {
         access_token: "synthetic-access-value",
         refreshToken: "synthetic-refresh-value",
         id_token: "synthetic-id-value",
+        apiKey: "synthetic-api-key",
+        OPENAI_API_KEY: "synthetic-openai-api-key",
         client_secret: "synthetic-client-secret",
         private_key: "synthetic-private-key",
         password: "synthetic-password",
@@ -31,6 +33,8 @@ describe("observability redaction", () => {
     expect(serialized).not.toContain("synthetic-authorization-value");
     expect(serialized).not.toContain("synthetic-cookie-value");
     expect(serialized).not.toContain("synthetic-access-value");
+    expect(serialized).not.toContain("synthetic-api-key");
+    expect(serialized).not.toContain("synthetic-openai-api-key");
     expect(serialized).not.toContain("synthetic-oauth-code");
     expect(serialized).not.toContain("synthetic-callback-code");
     expect(serialized).not.toContain("credential");

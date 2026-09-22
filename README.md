@@ -1,6 +1,6 @@
 # AI Developer Brand Copilot
 
-This repository contains the verified Phase 0 engineering foundation and verified Phase 1 GitHub ingestion foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, GitHub App installation and reconnect, normalized commit and merged pull-request ingestion, idempotent incremental synchronization, provider retry hardening, authenticated manual synchronization, durable background execution, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 2 is in progress: Task 2.1 provides the durable DevelopmentEvent, evidence-provenance, and versioned ProjectState persistence foundation, and Task 2.2 can deterministically organize bounded raw evidence into transient candidate development groups. The system does not yet interpret what the development means; DevelopmentEvent interpretation, ProjectState projection, product intelligence, and AI integration are not operational.
+This repository contains the verified Phase 0 engineering foundation and verified Phase 1 GitHub ingestion foundation for AI Developer Brand Copilot. Core ownership persistence, Supabase authentication, tenant RLS, GitHub App installation and reconnect, normalized commit and merged pull-request ingestion, idempotent incremental synchronization, provider retry hardening, authenticated manual synchronization, durable background execution, observability, CI, and the authenticated dashboard foundation are implemented and verified. Phase 2 is in progress: Tasks 2.1 through 2.3 provide durable DevelopmentEvent persistence, deterministic evidence grouping, and backend-only structured interpretation of those groups. Development evidence can now be semantically interpreted into durable DevelopmentEvents. ProjectState projection, worker integration for interpretation, product intelligence, content opportunities, shareability evaluation, and content generation are not operational.
 
 ## Prerequisites
 
@@ -81,7 +81,7 @@ Copy-Item apps/api/.env.example apps/api/.env
 Copy-Item apps/web/.env.example apps/web/.env
 ```
 
-Current server-only API variables are `NODE_ENV` (`development`, `test`, or `production`), `PORT` (an integer from 1 to 65535), `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, and `SUPABASE_PUBLISHABLE_KEY`. The API defaults to port `3001` when `PORT` is omitted. Both database values are required PostgreSQL URLs: use the Supabase pooler URL for `DATABASE_URL` at runtime and a direct connection URL for `DIRECT_URL` in Prisma CLI commands. The Supabase values let the API cryptographically verify access tokens; no service-role key is required or accepted by application configuration.
+Current server-only API variables are `NODE_ENV` (`development`, `test`, or `production`), `PORT` (an integer from 1 to 65535), `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `OPENAI_API_KEY`, and `OPENAI_INTERPRETATION_MODEL`. The API defaults to port `3001` when `PORT` is omitted. Both database values are required PostgreSQL URLs: use the Supabase pooler URL for `DATABASE_URL` at runtime and a direct connection URL for `DIRECT_URL` in Prisma CLI commands. The Supabase values let the API cryptographically verify access tokens; no service-role key is required or accepted by application configuration. OpenAI credentials and model selection remain backend-only; the interpretation request uses the Responses API with storage disabled and sends only bounded normalized evidence metadata, never source contents, diffs, patches, raw provider payloads, or credentials.
 
 `apps/api/.env.example` contains safe local placeholders only. Put real Supabase values only in the ignored `apps/api/.env`; never commit or paste them into source control or chat. `pnpm db:check` executes a minimal `SELECT 1` query and therefore requires valid local database credentials.
 
@@ -194,7 +194,7 @@ Commit identity is unique by connected repository and SHA. Pull-request identity
 
 All raw-evidence and SyncRun tables have RLS enabled. Authenticated database clients can select only rows that resolve through both the owned Project and GitHub connection; direct client writes are not granted. Application and worker writes remain server-only and retain API ownership checks.
 
-Raw evidence is not exposed through a browser evidence API. Fetching, manual enqueue, and durable background execution are implemented only through the server-side services described below. `DevelopmentEvent`, interpretation, scoring, and AI behavior remain unimplemented.
+Raw evidence is not exposed through a browser evidence API. Fetching, manual enqueue, and durable background execution are implemented only through the server-side services described below. Task 2.3 adds an isolated backend interpretation capability that turns trusted deterministic evidence groups into validated, scored `DevelopmentEvent` records; it is not yet connected to the background worker or a browser endpoint.
 
 ### Internal incremental GitHub activity synchronization
 
