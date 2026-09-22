@@ -10,6 +10,7 @@ import {
   type OpenAIInterpretationConfig,
 } from "./development-intelligence.tokens";
 import { OpenAIDevelopmentEventModelService } from "./openai-development-event-model.service";
+import { ProjectStateProjectorService } from "./project-state-projector.service";
 
 @Module({})
 export class DevelopmentIntelligenceModule {
@@ -19,6 +20,7 @@ export class DevelopmentIntelligenceModule {
       providers: [
         EvidenceGroupingService,
         DevelopmentEventInterpreterService,
+        ProjectStateProjectorService,
         { provide: OPENAI_INTERPRETATION_CONFIG, useValue: config },
         { provide: OPENAI_INTERPRETATION_FETCH, useValue: fetch },
         OpenAIDevelopmentEventModelService,
@@ -27,7 +29,11 @@ export class DevelopmentIntelligenceModule {
           useExisting: OpenAIDevelopmentEventModelService,
         },
       ],
-      exports: [EvidenceGroupingService, DevelopmentEventInterpreterService],
+      exports: [
+        EvidenceGroupingService,
+        DevelopmentEventInterpreterService,
+        ProjectStateProjectorService,
+      ],
     };
   }
 }

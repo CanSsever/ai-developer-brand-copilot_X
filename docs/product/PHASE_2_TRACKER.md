@@ -200,9 +200,57 @@ PDR semantics used by the foundation:
 
 - [x] Task 2.3 VERIFIED COMPLETE
 
+## Task 2.4 — Project State Projection
+
+### PDR State Semantics
+
+- [x] ProjectState is the single current structured state for one Project; ProjectStateVersion is its append-only snapshot history
+- [x] only persisted active DevelopmentEvents belonging to the owned Project are authoritative projection inputs
+- [x] rejected and superseded events are excluded; an active successor replaces its superseded predecessor in future projections without rewriting history
+- [x] applied-event links identify the complete authoritative DevelopmentEvent set that produced each state version
+- [x] purpose, target audience, and current phase remain null because validated DevelopmentEvents do not provide authoritative values for those fields
+- [x] technologies are a deterministic normalized union; feature-started, feature-completed, release, project-milestone, and testing-milestone events populate their corresponding structured state collections, with explicit related-feature identities reconciling started features that later complete
+- [x] recent milestones are limited to 20 events within 90 days of the latest authoritative event
+
+### Deterministic Projection and Replay
+
+- [x] projection uses no model call because validated DevelopmentEvents already provide the structured semantic inputs required for state aggregation
+- [x] authoritative events are ordered by occurredAt, then createdAt, then immutable event ID
+- [x] projection version is project-state-projection-v1
+- [x] the SHA-256 replay fingerprint covers the projection version and canonical authoritative event identity, semantic fields, scores, technologies, feature references, and extraction metadata
+- [x] an unchanged replay returns the existing current state/version and creates no duplicate snapshot or applied-event link
+- [x] a changed authoritative event set creates the next version and updates the single current state
+- [x] an empty authoritative set deterministically creates an empty versioned state anchored to Project creation time
+- [x] the callable service supports later deterministic rebuild/replay without adding Task 2.5 orchestration
+
+### Transactions, Concurrency, and Privacy
+
+- [x] current-state mutation, immutable version creation, and applied-event provenance commit in one serializable transaction
+- [x] compare-and-swap on the persisted current-state version detects stale projections; unique replay constraints and serializable conflicts fail safely
+- [x] ProjectStateVersion and its applied-event links remain append-only and prior versions are unchanged after new events or supersession
+- [x] Project ownership is checked from persistence and cross-Project events cannot enter the authoritative query or applied-event relation
+- [x] malformed historical state, ownership failure, persistence failure, and concurrency conflicts fail without partial updates
+- [x] lifecycle logs contain only Project ID, event count, projection version, state version, replay fingerprint, duration, result, and safe failure code
+- [x] projection reads no raw GitHub evidence and logs no event title, summary, commit message, PR text, file path, source, diff, prompt, or model response
+- [x] no worker/scheduler wiring, automatic reprocessing, ContentOpportunity, shareability, drafting, or Phase 3 behavior was added
+
+### Verification
+
+- [x] 32 focused deterministic Task 2.4 tests pass
+- [x] all 350 repository unit/integration tests pass: 314 API, 23 web, and 13 configuration tests
+- [x] Task 2.3 interpretation, Task 2.2 grouping, Task 2.1 persistence, and Phase 1 ingestion regressions remain green
+- [x] lint, typecheck, production build, and all 11 browser E2E tests pass
+- [x] Prisma client generation and schema validation pass
+- [x] database connectivity passes; all 9 existing migrations are applied and the schema is up to date
+- [x] Gitleaks history and trackable-content scans pass with no leaks
+- [x] no schema change or migration was required
+
+### Task Status
+
+- [x] Task 2.4 VERIFIED COMPLETE
+
 ## Remaining Phase 2 Tasks
 
-- [ ] Task 2.4 — Project State Projection: NOT STARTED
 - [ ] Task 2.5 — Reprocessing, Idempotency & Worker Integration: NOT STARTED
 - [ ] Task 2.6 — Intelligence Read Model / Internal Inspection: NOT STARTED
 - [ ] Task 2.7 — Phase 2 Evaluation & Exit Gate: NOT STARTED
