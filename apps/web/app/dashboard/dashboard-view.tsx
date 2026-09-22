@@ -1,17 +1,21 @@
 import type {
   GitHubConnectionSummary,
+  ProjectIntelligenceSummary,
   ProjectSummary,
   RepositorySyncSummary,
 } from "@developer-brand-copilot/contracts";
 import Link from "next/link";
 
 import { connectionErrorMessage, connectionStatusMessage } from "../github/feedback";
+import { IntelligencePanel } from "./intelligence-panel";
 import { SyncButton } from "./sync-button";
 
 interface DashboardViewProps {
   readonly connections: readonly GitHubConnectionSummary[];
   readonly createProjectAction: (formData: FormData) => Promise<never>;
   readonly error?: string | undefined;
+  readonly intelligence?: ProjectIntelligenceSummary | null;
+  readonly intelligenceLoadFailed?: boolean;
   readonly loadFailed: boolean;
   readonly projects: readonly ProjectSummary[];
   readonly selectedProjectId?: string | undefined;
@@ -98,6 +102,8 @@ export function DashboardView({
   connections,
   createProjectAction,
   error,
+  intelligence = null,
+  intelligenceLoadFailed = false,
   loadFailed,
   projects,
   selectedProjectId,
@@ -217,6 +223,7 @@ export function DashboardView({
       </section>
 
       {selectedProject ? (
+        <>
         <section aria-labelledby="current-project-heading" className="rounded-lg border border-gray-200 bg-white p-5">
           <h2 id="current-project-heading" className="text-xl font-semibold">Current Project</h2>
           <p className="mt-2">
@@ -229,6 +236,11 @@ export function DashboardView({
               : "Connect an authorized GitHub repository to synchronize activity."}
           </p>
         </section>
+        <IntelligencePanel
+          intelligence={intelligence}
+          loadFailed={intelligenceLoadFailed}
+        />
+        </>
       ) : null}
     </main>
   );

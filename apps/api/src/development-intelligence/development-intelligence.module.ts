@@ -20,6 +20,8 @@ import {
   INTELLIGENCE_PIPELINE_CLOCK,
   INTELLIGENCE_PIPELINE_WORKER_OPTIONS,
 } from "./intelligence-pipeline.tokens";
+import { IntelligenceReadController } from "./intelligence-read.controller";
+import { IntelligenceReadService } from "./intelligence-read.service";
 
 @Module({})
 export class DevelopmentIntelligenceModule {
@@ -27,12 +29,14 @@ export class DevelopmentIntelligenceModule {
     return {
       module: DevelopmentIntelligenceModule,
       global: true,
+      controllers: [IntelligenceReadController],
       providers: [
         EvidenceGroupingService,
         DevelopmentEventInterpreterService,
         ProjectStateProjectorService,
         IntelligencePipelineService,
         IntelligencePipelineWorkerService,
+        IntelligenceReadService,
         { provide: INTELLIGENCE_PIPELINE_CLOCK, useValue: () => new Date() },
         {
           provide: INTELLIGENCE_PIPELINE_WORKER_OPTIONS,

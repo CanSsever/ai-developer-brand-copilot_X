@@ -7,6 +7,7 @@ const connectionId = "423e4567-e89b-42d3-a456-426614174000";
 async function setFixtureState(
   request: APIRequestContext,
   state: "empty" | "project" | "installed" | "connected" | "error"
+    | "connected-intelligence"
     | "connected-retryable"
     | "connected-sync-error"
 ) {
@@ -135,6 +136,24 @@ test("represents a connected private repository", async ({ page, request }) => {
   await expect(
     page.getByText("GitHub activity has not been synced yet.")
   ).toBeVisible();
+});
+
+test("inspects current project intelligence without exposing raw evidence", async ({
+  page,
+  request,
+}) => {
+  await setFixtureState(request, "connected-intelligence");
+  await authenticate(page);
+
+  await expect(
+    page.getByRole("heading", { name: "Development intelligence" })
+  ).toBeVisible();
+  await expect(page.getByText("Development intelligence is up to date.")).toBeVisible();
+  await expect(page.getByText(/Version 2/)).toBeVisible();
+  await expect(page.getByText("NestJS, TypeScript")).toBeVisible();
+  await expect(page.getByText("Completed intelligence inspection")).toBeVisible();
+  await expect(page.getByText(/91% confidence/)).toBeVisible();
+  await expect(page.getByText(/commit message|pull request body|file path/i)).toHaveCount(0);
 });
 
 test("manually syncs a connected repository and shows safe success status", async ({

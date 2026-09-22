@@ -297,9 +297,52 @@ PDR semantics used by the foundation:
 
 - [x] Task 2.5 VERIFIED COMPLETE
 
+## Task 2.6 — Intelligence Read Model & Internal Inspection
+
+### PDR Read-Model Interpretation
+
+- [x] the Phase 2 event review/debug requirement is satisfied by a Project-scoped inspection surface within the existing dashboard rather than a separate Phase 3-style experience
+- [x] the read model exposes the current ProjectState, recent authoritative DevelopmentEvents, latest IntelligenceRun status, and safe version/provenance metadata
+- [x] ProjectStateVersion history is retained internally but not exposed because the PDR requires append-only audit metadata, not user-facing state-history inspection in Task 2.6
+- [x] AIExecution rows remain internal; extraction, projection, and processing versions provide sufficient safe inspection without exposing model configuration, prompts, responses, evidence, or token accounting
+
+### API, Ownership, and Privacy
+
+- [x] `GET /projects/:projectId/intelligence` is authenticated and resolves one Project through both Project ID and authenticated User ID
+- [x] malformed, unknown, and cross-user Project identifiers use the same safe `404 Project not found` behavior
+- [x] one bounded relation query returns current state, at most 20 active events, safe evidence counts, and the latest run without N+1 reads
+- [x] events are ordered deterministically by occurrence time, creation time, and ID descending; rejected and superseded events remain internal
+- [x] internal IntelligenceRun failure codes are reduced to safe generic codes and human-readable status messages; retry timing and safe group counters remain visible
+- [x] commit messages, PR title/body, file paths, raw evidence, source, diffs, patches, prompts, model responses, AIExecution rows, credentials, provider payloads, lease data, and internal failure codes are absent from the contract and UI
+- [x] read telemetry contains only Project ID, event count, state version, processing status, and request correlation supplied by existing observability
+- [x] endpoint and dashboard reads call neither GitHub nor OpenAI
+
+### Dashboard Inspection
+
+- [x] the selected Project shows a focused Development intelligence section beneath existing repository and sync status
+- [x] current ProjectState displays version/projection metadata, purpose, audience, phase, technologies, active features, completed features, and recent milestones
+- [x] recent DevelopmentEvents display validated semantic title/summary, human-readable type, occurrence time, confidence, safe evidence-reference counts, and extraction version
+- [x] no-intelligence, no-state, no-events, queued, running, retry-deferred, succeeded, terminal-failure, and isolated load-failure states use human-readable copy
+- [x] no recommendation, shareability, post-generation, publishing, editing, or other Phase 3 control was added
+
+### Verification
+
+- [x] 27 focused Task 2.6 unit/integration tests were added: 18 API tests and 9 web tests
+- [x] all 421 repository unit/integration tests pass: 376 API, 32 web, and 13 configuration tests
+- [x] one synthetic Task 2.6 browser scenario was added and all 12 browser E2E tests pass
+- [x] Task 2.5 worker/orchestration, Task 2.4 projection, Task 2.3 interpretation, Task 2.2 grouping, Task 2.1 persistence, and Phase 1 regressions remain green
+- [x] lint, typecheck, and production build pass
+- [x] Prisma generation/validation and database connectivity pass; all 10 migrations are applied and current
+- [x] Gitleaks history and trackable-content scans pass with no leaks
+- [x] no schema change or migration was required
+- [x] no live OpenAI or GitHub call was made
+
+### Task Status
+
+- [x] Task 2.6 VERIFIED COMPLETE
+
 ## Remaining Phase 2 Tasks
 
-- [ ] Task 2.6 — Intelligence Read Model / Internal Inspection: NOT STARTED
 - [ ] Task 2.7 — Phase 2 Evaluation & Exit Gate: NOT STARTED
 
 ## Phase Status

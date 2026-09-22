@@ -1,5 +1,6 @@
 import type {
   GitHubConnectionSummary,
+  ProjectIntelligenceSummary,
   ProjectSummary,
 } from "@developer-brand-copilot/contracts";
 import { redirect } from "next/navigation";
@@ -31,12 +32,31 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   let projects: readonly ProjectSummary[] = [];
   let connections: readonly GitHubConnectionSummary[] = [];
   let loadFailed = false;
+  let intelligence: ProjectIntelligenceSummary | null = null;
+  let intelligenceLoadFailed = false;
+  const query = await searchParams;
 
   try {
     [projects, connections] = await Promise.all([
       authenticatedApiRequest<readonly ProjectSummary[]>("/projects"),
       authenticatedApiRequest<readonly GitHubConnectionSummary[]>("/github/connections"),
     ]);
+
+    const selectedProjectId = first(query.projectId);
+    const selectedProject =
+      projects.find((project) => project.id === selectedProjectId) ?? projects[0];
+    if (selectedProject) {
+      try {
+        intelligence = await authenticatedApiRequest<ProjectIntelligenceSummary>(
+          `/projects/${encodeURIComponent(selectedProject.id)}/intelligence`
+        );
+      } catch (error) {
+        if (error instanceof AuthenticatedApiError && error.status === 401) {
+          redirect("/?authError=authentication_required");
+        }
+        intelligenceLoadFailed = true;
+      }
+    }
   } catch (error) {
     if (error instanceof AuthenticatedApiError && error.status === 401) {
       redirect("/?authError=authentication_required");
@@ -44,13 +64,14 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     loadFailed = true;
   }
 
-  const query = await searchParams;
   return (
     <DashboardView
       connections={connections}
       createProjectAction={createProject}
       error={first(query.error)}
       loadFailed={loadFailed}
+      intelligence={intelligence}
+      intelligenceLoadFailed={intelligenceLoadFailed}
       projects={projects}
       selectedProjectId={first(query.projectId)}
       signOutAction={signOut}

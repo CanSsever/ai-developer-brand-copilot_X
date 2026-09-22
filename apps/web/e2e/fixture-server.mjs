@@ -59,6 +59,7 @@ function configureFixture(state) {
 
   const connectedStates = [
     "connected",
+    "connected-intelligence",
     "connected-retryable",
     "connected-sync-error",
   ];
@@ -185,6 +186,7 @@ const apiServer = createServer(async (request, response) => {
       "project",
       "installed",
       "connected",
+      "connected-intelligence",
       "connected-retryable",
       "connected-sync-error",
       "error",
@@ -224,6 +226,69 @@ const apiServer = createServer(async (request, response) => {
       }
     }
     return sendJson(response, 200, projects);
+  }
+
+  if (
+    request.method === "GET" &&
+    url.pathname === `/projects/${projectId}/intelligence`
+  ) {
+    if (!projects.some((project) => project.id === projectId)) {
+      return sendJson(response, 404, { code: "NOT_FOUND", message: "Project not found" });
+    }
+    if (fixtureState !== "connected-intelligence") {
+      return sendJson(response, 200, {
+        currentState: null,
+        eventLimit: 20,
+        events: [],
+        processing: null,
+        projectId,
+      });
+    }
+    return sendJson(response, 200, {
+      currentState: {
+        activeFeatures: [],
+        completedFeatures: [],
+        currentPhase: "Development intelligence",
+        projectionVersion: "project-state-projection-v1",
+        purpose: "Explain development progress",
+        recentMilestones: [],
+        targetAudience: "Developers",
+        technologies: ["NestJS", "TypeScript"],
+        updatedAt: "2026-09-22T10:00:00.000Z",
+        version: 2,
+      },
+      eventLimit: 20,
+      events: [
+        {
+          confidence: 0.91,
+          eventId: "fixture-event-1",
+          extractionVersion: "development-event-extraction-v1",
+          occurredAt: "2026-09-22T10:00:00.000Z",
+          provenance: { commitCount: 2, pullRequestCount: 1 },
+          status: "active",
+          summary: "Added a safe intelligence inspection experience.",
+          title: "Completed intelligence inspection",
+          type: "feature_completed",
+        },
+      ],
+      processing: {
+        counters: {
+          groupsDiscovered: 1,
+          groupsFailed: 0,
+          groupsRejected: 0,
+          groupsSucceeded: 1,
+        },
+        failureCode: null,
+        finishedAt: "2026-09-22T10:01:00.000Z",
+        processingVersion: "processing-v1",
+        queuedAt: "2026-09-22T09:59:00.000Z",
+        retryAfterAt: null,
+        startedAt: "2026-09-22T10:00:00.000Z",
+        status: "succeeded",
+        statusMessage: "Development intelligence is up to date.",
+      },
+      projectId,
+    });
   }
 
   if (request.method === "POST" && url.pathname === "/projects") {
