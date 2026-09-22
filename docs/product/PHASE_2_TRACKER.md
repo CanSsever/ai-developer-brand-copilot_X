@@ -249,9 +249,56 @@ PDR semantics used by the foundation:
 
 - [x] Task 2.4 VERIFIED COMPLETE
 
+## Task 2.5 — Intelligence Pipeline Integration, Reprocessing & Idempotent Worker Execution
+
+### Trigger and Durable Execution
+
+- [x] only a fully succeeded persisted SyncRun makes its committed evidence boundary eligible; queued, running, failed, and cancelled SyncRuns never trigger intelligence processing
+- [x] IntelligenceRun is the durable Project-owned processing unit and records its source SyncRun, fixed evidence window, trigger, complete processing-version set, lifecycle, attempts, retry time, lease, safe counters, and failure code
+- [x] automatic discovery selects only successful source SyncRuns that have never received an IntelligenceRun, so deploying a new version does not automatically replay historical evidence
+- [x] explicit owned reprocessing selects the latest successful SyncRun and is version-aware; an identical source/version boundary is reused
+- [x] the established Phase 1 polling loop services the independently claimed intelligence worker after synchronization work; no second scheduler or external queue was introduced
+- [x] job persistence contains no repository evidence text, prompt, response, source, diff, patch, provider payload, or credential
+
+### Orchestration, Partial Failure, and Projection
+
+- [x] each claimed run calls EvidenceGroupingService, DevelopmentEventInterpreterService for every candidate, then ProjectStateProjectorService without duplicating their domain rules
+- [x] candidate groups are processed independently, so successful groups remain durable when another group fails
+- [x] any transient group failure defers the run and projection until all groups reach a stable decision; successful groups are reused on retry
+- [x] terminal group failures do not discard successful events; authoritative successes are projected before the run records a terminal partial-cycle failure
+- [x] insufficient-evidence and low-confidence decisions are stable completed outcomes rather than endless retry triggers
+- [x] projection always reads current authoritative active DevelopmentEvents and retains Task 2.4 optimistic-concurrency protection
+
+### Retry, Concurrency, Recovery, and Cost Control
+
+- [x] atomic FOR UPDATE SKIP LOCKED claims, one-active-run-per-Project uniqueness, UUID lease fencing, heartbeat extension, and serializable downstream projection prevent duplicate concurrent execution
+- [x] expired running leases are recoverable after process failure; queued and retryable rows survive API/worker restarts
+- [x] transient failures use at most three attempts with exponential backoff; normalized provider Retry-After takes precedence
+- [x] deterministic validation, refusal, configuration, and other terminal failures are not automatically hammered
+- [x] the processing fingerprint covers grouping, interpretation, and projection versions; changed versions require explicit historical reprocessing while new SyncRuns use current versions
+- [x] unchanged groups reuse DevelopmentEvents and provenance, persisted insufficient decisions skip another model request, and unchanged projection inputs create no ProjectStateVersion
+- [x] a configured per-user developer-day OpenAI attempt ceiling defaults to 100 and is checked transactionally before AIExecution creation using the Project IANA timezone
+- [x] no live GitHub access is used by the intelligence worker; provider disconnect stops new ingestion, while already durable derived history remains intact
+
+### Ownership, RLS, Observability, and Verification
+
+- [x] database validation constrains every IntelligenceRun to a succeeded SyncRun from the same Project and matching source window
+- [x] authenticated clients have owned read-only RLS access; durable writes and claims remain trusted-backend operations
+- [x] lifecycle telemetry contains only safe run IDs, Project IDs, version identifiers, counts, retry times, fingerprints, attempt numbers, and normalized failure codes; lease values and private evidence are never logged
+- [x] 44 focused Task 2.5 tests were added across durable schema, orchestration, worker claims/recovery, retry timing, idempotency, AI budget control, and Phase 1 polling integration
+- [x] all 394 repository unit/integration tests pass: 358 API, 23 web, and 13 configuration tests
+- [x] Task 2.4 projection, Task 2.3 interpretation, Task 2.2 grouping, Task 2.1 persistence, and Phase 1 ingestion/worker regressions remain green
+- [x] lint, typecheck, production build, and all 11 browser E2E tests pass
+- [x] Prisma generation/validation and database connectivity pass; all 10 migrations are applied and current
+- [x] Gitleaks history and trackable-content scans pass with no leaks
+- [x] no live OpenAI call was made
+
+### Task Status
+
+- [x] Task 2.5 VERIFIED COMPLETE
+
 ## Remaining Phase 2 Tasks
 
-- [ ] Task 2.5 — Reprocessing, Idempotency & Worker Integration: NOT STARTED
 - [ ] Task 2.6 — Intelligence Read Model / Internal Inspection: NOT STARTED
 - [ ] Task 2.7 — Phase 2 Evaluation & Exit Gate: NOT STARTED
 

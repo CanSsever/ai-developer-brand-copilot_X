@@ -10,6 +10,7 @@ import {
   type DevelopmentEventModelClient,
   type ModelInterpretationResult,
 } from "@developer-brand-copilot/ai";
+import { Prisma } from "../generated/prisma/client";
 
 import { PrismaService } from "../database/prisma.service";
 import { StructuredLogger } from "../observability/structured-logger";
@@ -32,6 +33,7 @@ const confidenceAcceptanceThreshold = 0.6;
 
 type InterpretationFailureCode =
   | "AI_CONFIGURATION_FAILURE"
+  | "AI_BUDGET_EXHAUSTED"
   | "AI_OUTPUT_INVALID"
   | "AI_PROVIDER_RESPONSE_INVALID"
   | "AI_PROVIDER_TRANSIENT_FAILURE"
@@ -43,7 +45,8 @@ type InterpretationFailureCode =
 export class DevelopmentEventInterpretationError extends Error {
   constructor(
     readonly failureCode: InterpretationFailureCode,
-    readonly retryable = false
+    readonly retryable = false,
+    readonly retryAfterAt: Date | null = null
   ) {
     super("Development event interpretation failed");
     this.name = "DevelopmentEventInterpretationError";
@@ -104,6 +107,79 @@ function fingerprint(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function localDateParts(date: Date, timeZone: string) {
+  const values = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      day: "2-digit",
+      month: "2-digit",
+      timeZone,
+      year: "numeric",
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)])
+  );
+  return {
+    day: values.day ?? 1,
+    month: values.month ?? 1,
+    year: values.year ?? 1970,
+  };
+}
+
+function zonedMidnightUtc(
+  date: { readonly day: number; readonly month: number; readonly year: number },
+  timeZone: string
+): Date {
+  const target = Date.UTC(date.year, date.month - 1, date.day);
+  let candidate = target;
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+    minute: "2-digit",
+    month: "2-digit",
+    second: "2-digit",
+    timeZone,
+    year: "numeric",
+  });
+  for (let iteration = 0; iteration < 3; iteration += 1) {
+    const values = Object.fromEntries(
+      formatter
+        .formatToParts(new Date(candidate))
+        .filter((part) => part.type !== "literal")
+        .map((part) => [part.type, Number(part.value)])
+    );
+    const represented = Date.UTC(
+      values.year ?? date.year,
+      (values.month ?? date.month) - 1,
+      values.day ?? date.day,
+      values.hour ?? 0,
+      values.minute ?? 0,
+      values.second ?? 0
+    );
+    candidate += target - represented;
+  }
+  return new Date(candidate);
+}
+
+function dailyBudgetWindow(now: Date, timeZone: string) {
+  const local = localDateParts(now, timeZone);
+  const nextCalendarDate = new Date(
+    Date.UTC(local.year, local.month - 1, local.day + 1)
+  );
+  return {
+    start: zonedMidnightUtc(local, timeZone),
+    end: zonedMidnightUtc(
+      {
+        day: nextCalendarDate.getUTCDate(),
+        month: nextCalendarDate.getUTCMonth() + 1,
+        year: nextCalendarDate.getUTCFullYear(),
+      },
+      timeZone
+    ),
+  };
+}
+
 function isUniqueConstraintError(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -117,6 +193,7 @@ function isUniqueConstraintError(error: unknown): boolean {
 export class DevelopmentEventInterpreterService {
   private readonly modelConfigurationFingerprint: string;
   private readonly extractionVersion: string;
+  private readonly dailyAttemptLimit: number;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -127,6 +204,7 @@ export class DevelopmentEventInterpreterService {
     private readonly modelConfig: OpenAIInterpretationConfig,
     private readonly logger: StructuredLogger
   ) {
+    this.dailyAttemptLimit = modelConfig.dailyAttemptLimit ?? 100;
     const configuration = JSON.stringify({
       model: modelConfig.model,
       ...openAiInterpretationModelConfiguration,
@@ -139,6 +217,10 @@ export class DevelopmentEventInterpreterService {
         schemaVersion: developmentEventSchemaVersion,
       })
     );
+  }
+
+  getProcessingVersion(): string {
+    return this.extractionVersion;
   }
 
   async interpret(
@@ -165,6 +247,22 @@ export class DevelopmentEventInterpreterService {
     });
     if (existing) {
       return { developmentEventId: existing.id, status: "reused" };
+    }
+    const priorInsufficientDecision = await this.prisma.aIExecution.findFirst({
+      where: {
+        projectId: group.projectId,
+        stage: "development_event_interpretation",
+        inputFingerprint: prepared.inputFingerprint,
+        promptVersion: developmentEventPromptVersion,
+        modelConfigurationFingerprint: this.modelConfigurationFingerprint,
+        status: "rejected",
+        validationStatus: "valid",
+        failureCode: "INSUFFICIENT_EVIDENCE",
+      },
+      select: { id: true },
+    });
+    if (priorInsufficientDecision) {
+      return { developmentEventId: null, status: "insufficient_evidence" };
     }
 
     this.logger.info("development_event_interpretation_started", {
@@ -349,32 +447,68 @@ export class DevelopmentEventInterpreterService {
   ): Promise<ValidAttempt> {
     let repairErrors: readonly string[] = [];
     for (let localAttempt = 0; localAttempt < 2; localAttempt += 1) {
-      const attemptNumber =
-        (await this.prisma.aIExecution.count({
-          where: {
-            projectId: group.projectId,
-            stage: "development_event_interpretation",
-            inputFingerprint: prepared.inputFingerprint,
-            promptVersion: developmentEventPromptVersion,
-            modelConfigurationFingerprint: this.modelConfigurationFingerprint,
-          },
-        })) + 1;
       const startedAt = new Date();
-      const execution = await this.prisma.aIExecution.create({
-        data: {
-          attemptNumber,
-          inputFingerprint: prepared.inputFingerprint,
-          model: this.modelConfig.model,
-          modelConfiguration: openAiInterpretationModelConfiguration,
-          modelConfigurationFingerprint: this.modelConfigurationFingerprint,
-          projectId: group.projectId,
-          promptVersion: developmentEventPromptVersion,
-          schemaVersion: developmentEventSchemaVersion,
-          stage: "development_event_interpretation",
-          startedAt,
+      const execution = await this.prisma.$transaction(
+        async (transaction) => {
+          const project = await transaction.project.findUnique({
+            where: { id: group.projectId },
+            select: { timezone: true, userId: true },
+          });
+          if (!project) {
+            throw new DevelopmentEventInterpretationError(
+              "EVIDENCE_SCOPE_INVALID"
+            );
+          }
+          const budgetWindow = dailyBudgetWindow(
+            startedAt,
+            project.timezone
+          );
+          const dailyAttempts = await transaction.aIExecution.count({
+            where: {
+              project: { userId: project.userId },
+              startedAt: {
+                gte: budgetWindow.start,
+                lt: budgetWindow.end,
+              },
+            },
+          });
+          if (dailyAttempts >= this.dailyAttemptLimit) {
+            throw new DevelopmentEventInterpretationError(
+              "AI_BUDGET_EXHAUSTED",
+              true,
+              budgetWindow.end
+            );
+          }
+          const attemptNumber =
+            (await transaction.aIExecution.count({
+              where: {
+                projectId: group.projectId,
+                stage: "development_event_interpretation",
+                inputFingerprint: prepared.inputFingerprint,
+                promptVersion: developmentEventPromptVersion,
+                modelConfigurationFingerprint:
+                  this.modelConfigurationFingerprint,
+              },
+            })) + 1;
+          return transaction.aIExecution.create({
+            data: {
+              attemptNumber,
+              inputFingerprint: prepared.inputFingerprint,
+              model: this.modelConfig.model,
+              modelConfiguration: openAiInterpretationModelConfiguration,
+              modelConfigurationFingerprint:
+                this.modelConfigurationFingerprint,
+              projectId: group.projectId,
+              promptVersion: developmentEventPromptVersion,
+              schemaVersion: developmentEventSchemaVersion,
+              stage: "development_event_interpretation",
+              startedAt,
+            },
+            select: { id: true },
+          });
         },
-        select: { id: true },
-      });
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable }
+      );
       let result: ModelInterpretationResult;
       try {
         result = await this.modelClient.interpret(prepared.input, repairErrors);
@@ -393,7 +527,8 @@ export class DevelopmentEventInterpreterService {
         });
         throw new DevelopmentEventInterpretationError(
           providerError.failureCode,
-          providerError.retryable
+          providerError.retryable,
+          providerError.retryAfterAt
         );
       }
       const parsed = parseDevelopmentEventInterpretation(

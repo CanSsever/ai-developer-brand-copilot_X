@@ -26,6 +26,7 @@ const testConfig = {
   GITHUB_APP_CALLBACK_URL: "http://localhost:3000/github/callback",
   OPENAI_API_KEY: "synthetic_openai_api_key_for_tests",
   OPENAI_INTERPRETATION_MODEL: "configured-test-model",
+  OPENAI_DAILY_ATTEMPT_LIMIT: 100,
 };
 
 describe("GET /auth/me", () => {

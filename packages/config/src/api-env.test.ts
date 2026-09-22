@@ -18,6 +18,7 @@ const validGitHubConfig = {
 };
 
 const validAiConfig = {
+  OPENAI_DAILY_ATTEMPT_LIMIT: 100,
   OPENAI_API_KEY: "synthetic_openai_api_key_for_tests",
   OPENAI_INTERPRETATION_MODEL: "configured-test-model",
 };
@@ -140,6 +141,9 @@ describe("parseApiEnv", () => {
       parseApiEnv({ ...input, ...validAiConfig })
         .OPENAI_INTERPRETATION_MODEL
     ).toBe(validAiConfig.OPENAI_INTERPRETATION_MODEL);
+    expect(
+      parseApiEnv({ ...input, ...validAiConfig }).OPENAI_DAILY_ATTEMPT_LIMIT
+    ).toBe(100);
   });
 });
 

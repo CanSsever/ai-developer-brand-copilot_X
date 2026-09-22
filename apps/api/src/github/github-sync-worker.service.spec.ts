@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { PrismaService } from "../database/prisma.service";
 import type { StructuredLogger } from "../observability/structured-logger";
+import type { IntelligencePipelineWorkerService } from "../development-intelligence/intelligence-pipeline-worker.service";
 import {
   GitHubCommitSyncError,
   type GitHubCommitSyncService,
@@ -65,6 +66,9 @@ function harness(
     warnEvent: vi.fn(),
     errorEvent: vi.fn(),
   };
+  const intelligenceWorker = {
+    runOnce: vi.fn().mockResolvedValue(false),
+  };
   const options = {
     ...defaultGitHubSyncWorkerOptions,
     heartbeatIntervalMs: 60_000,
@@ -76,9 +80,10 @@ function harness(
     sync as unknown as GitHubCommitSyncService,
     logger as unknown as StructuredLogger,
     () => new Date(now),
-    options
+    options,
+    intelligenceWorker as unknown as IntelligencePipelineWorkerService
   );
-  return { logger, options, prisma, sync, worker };
+  return { intelligenceWorker, logger, options, prisma, sync, worker };
 }
 
 function rawSql(mock: ReturnType<typeof vi.fn>, callIndex: number): string {
@@ -89,6 +94,13 @@ function rawSql(mock: ReturnType<typeof vi.fn>, callIndex: number): string {
 }
 
 describe("GitHubSyncWorkerService", () => {
+  it("services durable intelligence work through the existing polling tick", async () => {
+    const { intelligenceWorker, worker } = harness();
+    intelligenceWorker.runOnce.mockResolvedValueOnce(true);
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(intelligenceWorker.runOnce).toHaveBeenCalledOnce();
+  });
+
   it("atomically claims queued work and invokes the existing sync engine", async () => {
     const { prisma, sync, worker } = harness({ claimRows: [claim()] });
 

@@ -81,6 +81,7 @@ function harness(options: {
   readonly commits?: readonly Record<string, unknown>[];
   readonly pullRequests?: readonly Record<string, unknown>[];
   readonly model?: string;
+  readonly dailyAttempts?: number;
 } = {}) {
   const group = options.group ?? candidate();
   const commits = options.commits ?? [
@@ -163,10 +164,16 @@ function harness(options: {
     ),
   };
   const aIExecution = {
-    count: vi.fn().mockImplementation(async () => aIExecution.create.mock.calls.length),
+    count: vi.fn().mockImplementation(
+      async (args: { where?: { startedAt?: unknown } }) =>
+        args.where?.startedAt
+          ? (options.dailyAttempts ?? 0)
+          : aIExecution.create.mock.calls.length
+    ),
     create: vi.fn().mockImplementation(async () => ({
       id: `execution-${aIExecution.create.mock.calls.length}`,
     })),
+    findFirst: vi.fn().mockResolvedValue(null),
     update: vi.fn().mockResolvedValue({}),
   };
   const prisma = {
@@ -175,6 +182,9 @@ function harness(options: {
     developmentEvent,
     gitHubCommit: { findMany: vi.fn().mockResolvedValue(commits) },
     gitHubPullRequest: { findMany: vi.fn().mockResolvedValue(pullRequests) },
+    project: {
+      findUnique: vi.fn().mockResolvedValue({ timezone: "Europe/Berlin", userId }),
+    },
     projectState,
     $transaction: vi.fn().mockImplementation(
       async (callback: (transaction: unknown) => Promise<unknown>) =>
@@ -336,6 +346,31 @@ describe("DevelopmentEventInterpreterService", () => {
         }),
       })
     );
+  });
+
+  it("reuses a persisted insufficient-evidence decision without another model call", async () => {
+    const test = harness();
+    test.aIExecution.findFirst.mockResolvedValueOnce({ id: "prior-insufficient" });
+    await expect(
+      test.service.interpret({ groupKey, grouping: groupingRequest })
+    ).resolves.toEqual({
+      developmentEventId: null,
+      status: "insufficient_evidence",
+    });
+    expect(test.modelClient.interpret).not.toHaveBeenCalled();
+    expect(test.aIExecution.create).not.toHaveBeenCalled();
+  });
+
+  it("blocks model invocation when the configured daily user budget is exhausted", async () => {
+    const test = harness({ dailyAttempts: 100 });
+    await expect(
+      test.service.interpret({ groupKey, grouping: groupingRequest })
+    ).rejects.toMatchObject({
+      failureCode: "AI_BUDGET_EXHAUSTED",
+      retryable: true,
+    });
+    expect(test.modelClient.interpret).not.toHaveBeenCalled();
+    expect(test.aIExecution.create).not.toHaveBeenCalled();
   });
 
   it("persists low-confidence interpretations as rejected review records", async () => {

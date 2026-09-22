@@ -28,11 +28,25 @@ export type AIProviderFailureCode =
 export class AIProviderError extends Error {
   constructor(
     readonly failureCode: AIProviderFailureCode,
-    readonly retryable: boolean
+    readonly retryable: boolean,
+    readonly retryAfterAt: Date | null = null
   ) {
     super("Development event AI provider request failed");
     this.name = "AIProviderError";
   }
+}
+
+function retryAfterAt(response: Response): Date | null {
+  const value = response.headers.get("Retry-After");
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return new Date(Date.now() + Math.min(seconds, 86_400) * 1_000);
+  }
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && timestamp > Date.now()
+    ? new Date(Math.min(timestamp, Date.now() + 86_400_000))
+    : null;
 }
 
 interface OpenAIResponseBody {
@@ -126,7 +140,8 @@ export class OpenAIDevelopmentEventModelService
         retryable
           ? "AI_PROVIDER_TRANSIENT_FAILURE"
           : "AI_CONFIGURATION_FAILURE",
-        retryable
+        retryable,
+        retryable ? retryAfterAt(response) : null
       );
     }
 

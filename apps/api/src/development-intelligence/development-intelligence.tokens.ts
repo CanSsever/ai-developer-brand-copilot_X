@@ -10,5 +10,6 @@ export const OPENAI_INTERPRETATION_FETCH = Symbol(
 
 export interface OpenAIInterpretationConfig {
   readonly apiKey: string;
+  readonly dailyAttemptLimit?: number;
   readonly model: string;
 }

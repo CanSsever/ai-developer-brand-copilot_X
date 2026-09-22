@@ -21,6 +21,7 @@ async function bootstrap(): Promise<void> {
     GITHUB_APP_CALLBACK_URL: process.env.GITHUB_APP_CALLBACK_URL,
     OPENAI_API_KEY: process.env.OPENAI_API_KEY,
     OPENAI_INTERPRETATION_MODEL: process.env.OPENAI_INTERPRETATION_MODEL,
+    OPENAI_DAILY_ATTEMPT_LIMIT: process.env.OPENAI_DAILY_ATTEMPT_LIMIT,
   });
   const app = await NestFactory.create(AppModule.register(config), {
     logger: new StructuredLogger(),

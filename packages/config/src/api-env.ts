@@ -92,6 +92,7 @@ const apiEnvSchema = z.object({
   GITHUB_APP_CALLBACK_URL: githubCallbackUrl,
   OPENAI_API_KEY: z.string().trim().min(20),
   OPENAI_INTERPRETATION_MODEL: z.string().trim().min(1).max(100),
+  OPENAI_DAILY_ATTEMPT_LIMIT: z.coerce.number().int().min(1).max(1_000).default(100),
 });
 
 const databaseEnvSchema = apiEnvSchema.pick({

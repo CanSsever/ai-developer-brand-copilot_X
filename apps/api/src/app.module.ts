@@ -20,6 +20,7 @@ export class AppModule {
         DevelopmentIntelligenceModule.register({
           apiKey: config.OPENAI_API_KEY,
           model: config.OPENAI_INTERPRETATION_MODEL,
+          dailyAttemptLimit: config.OPENAI_DAILY_ATTEMPT_LIMIT,
         }),
         AuthModule.register({
           url: config.SUPABASE_URL,

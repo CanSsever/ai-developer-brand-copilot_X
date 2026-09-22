@@ -160,6 +160,27 @@ describe("OpenAIDevelopmentEventModelService", () => {
     } satisfies Partial<AIProviderError>);
   });
 
+  it("normalizes Retry-After for rate-limited durable retries", async () => {
+    const service = new OpenAIDevelopmentEventModelService(
+      { apiKey, model },
+      vi.fn().mockResolvedValue(
+        new Response("{}", {
+          status: 429,
+          headers: { "Retry-After": "120" },
+        })
+      ) as unknown as typeof fetch
+    );
+    const before = Date.now();
+    const error = await service.interpret(evidence).catch((caught: unknown) => caught);
+    expect(error).toMatchObject({
+      failureCode: "AI_PROVIDER_TRANSIENT_FAILURE",
+      retryable: true,
+    } satisfies Partial<AIProviderError>);
+    expect((error as AIProviderError).retryAfterAt?.getTime()).toBeGreaterThanOrEqual(
+      before + 120_000
+    );
+  });
+
   it("exposes injectable tokens rather than a browser-facing client", () => {
     expect(typeof OPENAI_INTERPRETATION_CONFIG).toBe("symbol");
     expect(typeof OPENAI_INTERPRETATION_FETCH).toBe("symbol");

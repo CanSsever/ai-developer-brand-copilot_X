@@ -3,9 +3,11 @@ import { randomUUID } from "node:crypto";
 import {
   Inject,
   Injectable,
+  Optional,
   type OnApplicationShutdown,
   type OnModuleInit,
 } from "@nestjs/common";
+import { IntelligencePipelineWorkerService } from "../development-intelligence/intelligence-pipeline-worker.service";
 
 import { PrismaService } from "../database/prisma.service";
 import { StructuredLogger } from "../observability/structured-logger";
@@ -62,7 +64,9 @@ export class GitHubSyncWorkerService
     private readonly logger: StructuredLogger,
     @Inject(GITHUB_SYNC_CLOCK) private readonly clock: () => Date,
     @Inject(GITHUB_SYNC_WORKER_OPTIONS)
-    private readonly options: GitHubSyncWorkerOptions
+    private readonly options: GitHubSyncWorkerOptions,
+    @Optional()
+    private readonly intelligenceWorker?: IntelligencePipelineWorkerService
   ) {}
 
   onModuleInit(): void {
@@ -117,48 +121,50 @@ export class GitHubSyncWorkerService
 
     if (this.stopping) return false;
     const claimed = await this.claimNext(now);
-    if (!claimed) return false;
-
-    if (claimed.recovered) {
-      this.logger.warnEvent("sync_run_recovered", {
-        syncRunId: claimed.syncRunId,
-      });
-    }
-    this.logger.info("sync_run_claimed", {
-      syncRunId: claimed.syncRunId,
-      workerAttemptCount: claimed.workerAttemptCount,
-    });
-
-    const heartbeat = setInterval(() => {
-      void this.extendLease(claimed).catch(() => {
-        this.logger.errorEvent("sync_worker_heartbeat_failed", {
-          failureCode: "SYNC_INTERNAL_ERROR",
+    if (claimed) {
+      if (claimed.recovered) {
+        this.logger.warnEvent("sync_run_recovered", {
           syncRunId: claimed.syncRunId,
         });
+      }
+      this.logger.info("sync_run_claimed", {
+        syncRunId: claimed.syncRunId,
+        workerAttemptCount: claimed.workerAttemptCount,
       });
-    }, this.options.heartbeatIntervalMs);
 
-    try {
-      await this.sync.executeClaimed(
-        claimed.syncRunId,
-        this.claimToken(claimed)
-      );
-      this.logger.info("sync_worker_completed", {
-        syncRunId: claimed.syncRunId,
-      });
-    } catch (error) {
-      await this.deferRetry(claimed, error, this.clock());
-      this.logger.errorEvent("sync_worker_failure", {
-        failureCode:
-          error instanceof GitHubCommitSyncError
-            ? error.failureCode
-            : "SYNC_INTERNAL_ERROR",
-        syncRunId: claimed.syncRunId,
-      });
-    } finally {
-      clearInterval(heartbeat);
+      const heartbeat = setInterval(() => {
+        void this.extendLease(claimed).catch(() => {
+          this.logger.errorEvent("sync_worker_heartbeat_failed", {
+            failureCode: "SYNC_INTERNAL_ERROR",
+            syncRunId: claimed.syncRunId,
+          });
+        });
+      }, this.options.heartbeatIntervalMs);
+
+      try {
+        await this.sync.executeClaimed(
+          claimed.syncRunId,
+          this.claimToken(claimed)
+        );
+        this.logger.info("sync_worker_completed", {
+          syncRunId: claimed.syncRunId,
+        });
+      } catch (error) {
+        await this.deferRetry(claimed, error, this.clock());
+        this.logger.errorEvent("sync_worker_failure", {
+          failureCode:
+            error instanceof GitHubCommitSyncError
+              ? error.failureCode
+              : "SYNC_INTERNAL_ERROR",
+          syncRunId: claimed.syncRunId,
+        });
+      } finally {
+        clearInterval(heartbeat);
+      }
     }
-    return true;
+    const intelligenceProcessed =
+      (await this.intelligenceWorker?.runOnce()) ?? false;
+    return Boolean(claimed) || intelligenceProcessed;
   }
 
   private async claimNext(now: Date): Promise<

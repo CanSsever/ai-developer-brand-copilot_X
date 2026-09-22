@@ -29,6 +29,7 @@ model Project {
   developmentEvents        DevelopmentEvent[]
   aiExecutions             AIExecution[]
   projectState             ProjectState?
+  intelligenceRuns         IntelligenceRun[]
 
   @@index([userId])
 }
@@ -210,10 +211,60 @@ model SyncRun {
   createdAt              DateTime            @default(now()) @db.Timestamptz(3)
   updatedAt              DateTime            @default(now()) @updatedAt @db.Timestamptz(3)
   connectedRepository    ConnectedRepository @relation(fields: [connectedRepositoryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  intelligenceRuns       IntelligenceRun[]
 
   @@unique([connectedRepositoryId, idempotencyKey])
   @@index([connectedRepositoryId, createdAt])
   @@index([connectedRepositoryId, status])
+}
+
+enum IntelligenceRunStatus {
+  queued
+  running
+  succeeded
+  failed_retryable
+  failed_terminal
+}
+
+enum IntelligenceRunTrigger {
+  sync_completion
+  manual_reprocess
+}
+
+model IntelligenceRun {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  projectId             String                 @db.Uuid
+  sourceSyncRunId       String                 @db.Uuid
+  status                IntelligenceRunStatus  @default(queued)
+  trigger               IntelligenceRunTrigger
+  runKey                String                 @db.VarChar(64)
+  processingVersion     String                 @db.VarChar(64)
+  groupingVersion       String                 @db.VarChar(64)
+  interpretationVersion String                 @db.VarChar(64)
+  projectionVersion     String                 @db.VarChar(64)
+  sourceWindowStart     DateTime               @db.Timestamptz(3)
+  sourceWindowEnd       DateTime               @db.Timestamptz(3)
+  queuedAt              DateTime               @default(now()) @db.Timestamptz(3)
+  startedAt             DateTime?              @db.Timestamptz(3)
+  finishedAt            DateTime?              @db.Timestamptz(3)
+  attemptCount          Int                    @default(0)
+  retryAfterAt          DateTime?              @db.Timestamptz(3)
+  leaseToken            String?                @db.Uuid
+  leaseExpiresAt        DateTime?              @db.Timestamptz(3)
+  groupsDiscovered      Int                    @default(0)
+  groupsSucceeded       Int                    @default(0)
+  groupsRejected        Int                    @default(0)
+  groupsFailed          Int                    @default(0)
+  failureCode           String?                @db.VarChar(64)
+  createdAt             DateTime               @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime               @default(now()) @updatedAt @db.Timestamptz(3)
+  project               Project                @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  sourceSyncRun         SyncRun                @relation(fields: [sourceSyncRunId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@unique([projectId, runKey])
+  @@unique([sourceSyncRunId, processingVersion])
+  @@index([projectId, createdAt])
+  @@index([status, retryAfterAt, leaseExpiresAt, queuedAt])
 }
 
 model GitHubConnectionAttempt {
