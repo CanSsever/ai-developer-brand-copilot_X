@@ -118,11 +118,11 @@ describe("development intelligence persistence foundation", () => {
     expect(migration).toContain("validate_pull_request_event_evidence");
   });
 
-  it("defines a durable project-scoped event idempotency boundary", () => {
+  it("defines a durable project-scoped semantic-input idempotency boundary", () => {
     const event = modelBlock("DevelopmentEvent");
 
     expect(event).toContain(
-      "@@unique([projectId, eventKey, extractionVersion])"
+      "@@unique([projectId, eventKey, extractionVersion, inputFingerprint])"
     );
     expect(migration).toContain(
       'CONSTRAINT "DevelopmentEvent_event_key_format_check"'

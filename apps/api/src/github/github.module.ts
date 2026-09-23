@@ -17,13 +17,17 @@ import {
   GITHUB_RETRY_DELAY,
   GITHUB_RETRY_RANDOM,
   GITHUB_SYNC_CLOCK,
+  GITHUB_SYNC_WORKER_ENABLED,
   GITHUB_SYNC_WORKER_OPTIONS,
 } from "./github.tokens";
 import type { GitHubAppConfig } from "./github.types";
 
 @Module({})
 export class GitHubModule {
-  static register(config: GitHubAppConfig): DynamicModule {
+  static register(
+    config: GitHubAppConfig,
+    options: { readonly enableWorker?: boolean } = {}
+  ): DynamicModule {
     return {
       module: GitHubModule,
       controllers: [GitHubController],
@@ -37,6 +41,7 @@ export class GitHubModule {
         },
         { provide: GITHUB_RETRY_RANDOM, useValue: Math.random },
         { provide: GITHUB_SYNC_CLOCK, useValue: () => new Date() },
+        { provide: GITHUB_SYNC_WORKER_ENABLED, useValue: options.enableWorker ?? true },
         {
           provide: GITHUB_SYNC_WORKER_OPTIONS,
           useValue: defaultGitHubSyncWorkerOptions,

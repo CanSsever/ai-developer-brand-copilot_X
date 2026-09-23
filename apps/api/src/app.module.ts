@@ -11,7 +11,14 @@ import { ObservabilityModule } from "./observability/observability.module";
 
 @Module({})
 export class AppModule {
-  static register(config: ApiEnv): DynamicModule {
+  static registerOperational(config: ApiEnv): DynamicModule {
+    return AppModule.register(config, { backgroundWorkers: false });
+  }
+
+  static register(
+    config: ApiEnv,
+    options: { readonly backgroundWorkers?: boolean } = {}
+  ): DynamicModule {
     return {
       module: AppModule,
       imports: [
@@ -32,7 +39,7 @@ export class AppModule {
           clientSecret: config.GITHUB_APP_CLIENT_SECRET,
           privateKey: config.GITHUB_APP_PRIVATE_KEY,
           slug: config.GITHUB_APP_SLUG,
-        }),
+        }, { enableWorker: options.backgroundWorkers ?? true }),
       ],
       controllers: [AppController],
     };

@@ -23,6 +23,9 @@ blob-report/
 *.log
 pnpm-debug.log*
 
+# Runtime-only safe Phase 2 evaluation artifacts
+/runtime/phase2-evaluations/
+
 # Editors and operating systems
 .DS_Store
 Thumbs.db

@@ -149,9 +149,12 @@ test("inspects current project intelligence without exposing raw evidence", asyn
     page.getByRole("heading", { name: "Development intelligence" })
   ).toBeVisible();
   await expect(page.getByText("Development intelligence is up to date.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today" })).toBeVisible();
+  await expect(page.getByText("Meaningful development for today is ready.")).toBeVisible();
+  await expect(page.getByText("2 commits · 1 meaningful events · 0 excluded/noise activities")).toBeVisible();
   await expect(page.getByText(/Version 2/)).toBeVisible();
   await expect(page.getByText("NestJS, TypeScript")).toBeVisible();
-  await expect(page.getByText("Completed intelligence inspection")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Completed intelligence inspection" })).toBeVisible();
   await expect(page.getByText(/91% confidence/)).toBeVisible();
   await expect(page.getByText(/commit message|pull request body|file path/i)).toHaveCount(0);
 });

@@ -3,6 +3,9 @@ export type { ApiErrorResponse } from "./api-error-response.js";
 export type { DatabaseHealthResponse, HealthResponse } from "./health-response.js";
 export type {
   CurrentProjectStateSummary,
+  DailyDevelopmentSummaryItem,
+  DailyDevelopmentSummaryResponse,
+  DailyDevelopmentSummaryStatus,
   DevelopmentEventStatus,
   DevelopmentEventSummary,
   DevelopmentEventType,

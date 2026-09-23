@@ -291,6 +291,34 @@ const apiServer = createServer(async (request, response) => {
     });
   }
 
+  if (
+    request.method === "GET" &&
+    url.pathname === `/projects/${projectId}/daily-summaries/today`
+  ) {
+    if (!projects.some((project) => project.id === projectId)) {
+      return sendJson(response, 404, { code: "NOT_FOUND", message: "Project not found" });
+    }
+    const completed = fixtureState === "connected-intelligence";
+    return sendJson(response, 200, {
+      confidence: completed ? 0.91 : null,
+      counts: { commits: completed ? 2 : 0, excludedActivities: 0, meaningfulEvents: completed ? 1 : 0 },
+      developerDay: "2026-09-23",
+      generationVersion: "daily-development-summary-v1",
+      items: completed ? [{
+        developmentEventId: "fixture-event-1",
+        summary: "Added a safe intelligence inspection experience.",
+        title: "Completed intelligence inspection",
+        type: "feature_completed",
+      }] : [],
+      projectId,
+      projectStateVersion: completed ? 2 : null,
+      status: completed ? "completed" : "no_activity",
+      statusMessage: completed ? "Meaningful development for today is ready." : "No repository activity was recorded for this developer day.",
+      timezone: "Europe/Berlin",
+      version: 1,
+    });
+  }
+
   if (request.method === "POST" && url.pathname === "/projects") {
     const body = await readJson(request);
     if (typeof body.timezone !== "string" || body.timezone.trim() === "") {

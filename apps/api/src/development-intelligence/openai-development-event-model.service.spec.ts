@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  developmentEventInterpretationSchema,
+} from "@developer-brand-copilot/ai";
+import {
   OPENAI_INTERPRETATION_CONFIG,
   OPENAI_INTERPRETATION_FETCH,
 } from "./development-intelligence.tokens";
@@ -13,6 +16,7 @@ import {
 const apiKey = "synthetic_openai_api_key_never_logged";
 const model = "configured-test-model";
 const evidence = {
+  activeFeatures: [],
   commits: [
     {
       additions: 1,
@@ -77,6 +81,9 @@ describe("OpenAIDevelopmentEventModelService", () => {
         name: "development_event_interpretation",
         strict: true,
       },
+    });
+    expect(body.text).toMatchObject({
+      format: { schema: developmentEventInterpretationSchema },
     });
   });
 
@@ -195,6 +202,107 @@ describe("OpenAIDevelopmentEventModelService", () => {
     expect(prepared.commits[0]?.message).toContain("[REDACTED]");
     expect(prepared.commits[0]?.message).not.toContain("super-secret-value");
     expect(evidence.commits[0]?.message).toBe("Synthetic private commit message");
+  });
+
+  it.each([
+    ["OpenAI project key", `sk-proj-${"a".repeat(32)}`],
+    ["existing OpenAI key", `sk-${"b".repeat(32)}`],
+    ["GitHub personal token", `ghp_${"c".repeat(32)}`],
+    ["GitHub fine-grained token", `github_pat_${"d".repeat(32)}`],
+    ["GitHub user token", `ghu_${"e".repeat(32)}`],
+    ["Bearer credential", `Bearer ${"f".repeat(24)}`],
+    ["Authorization header credential", `Authorization: Bearer ${"g".repeat(24)}`],
+  ])("redacts %s from provider evidence", (_label, secret) => {
+    const prepared = minimizeOpenAIEvidence({
+      ...evidence,
+      commits: [{ ...evidence.commits[0]!, message: `before ${secret} after` }],
+    });
+
+    expect(prepared.commits[0]?.message).toContain("[REDACTED_");
+    expect(prepared.commits[0]?.message).not.toContain(secret);
+  });
+
+  it("redacts private keys, assignments, URLs, and multiple secrets without mutating records", () => {
+    const projectToken = `sk-proj-${"h".repeat(32)}`;
+    const githubToken = `ghp_${"i".repeat(32)}`;
+    const privateKey = "-----BEGIN PRIVATE KEY-----\\nprivate-material\\n-----END PRIVATE KEY-----";
+    const databaseUrl = "postgresql://user:database-password@example.test/app";
+    const input = {
+      ...evidence,
+      commits: [
+        {
+          ...evidence.commits[0]!,
+          message: `token=${projectToken}; secret=commit-secret-value; ${privateKey}`,
+        },
+      ],
+      pullRequests: [
+        {
+          additions: 2,
+          bodySummary: `password=pr-password-value ${databaseUrl}`,
+          deletions: 1,
+          filePaths: ["src/normal.ts"],
+          id: "pr-1",
+          mergedAt: "2026-09-20T10:00:00.000Z",
+          title: `Ship ${githubToken} safely`,
+        },
+      ],
+    };
+
+    const prepared = minimizeOpenAIEvidence(input);
+    const serialized = JSON.stringify(prepared);
+    for (const secret of [
+      projectToken,
+      githubToken,
+      "commit-secret-value",
+      "private-material",
+      "pr-password-value",
+      "database-password",
+    ]) {
+      expect(serialized).not.toContain(secret);
+    }
+    expect(serialized).toContain("Ship");
+    expect(input.commits[0]?.message).toContain(projectToken);
+    expect(input.pullRequests[0]?.title).toContain(githubToken);
+  });
+
+  it("sends only sanitized evidence to the model adapter and keeps sensitive errors safe", async () => {
+    const secret = `sk-proj-${"j".repeat(32)}`;
+    const fetchMock = vi.fn().mockResolvedValue(
+      response(200, {
+        output: [{ content: [{ type: "output_text", text: "{}" }] }],
+      })
+    );
+    const service = new OpenAIDevelopmentEventModelService(
+      { apiKey, model },
+      fetchMock as unknown as typeof fetch
+    );
+    const input = {
+      ...evidence,
+      commits: [{ ...evidence.commits[0]!, message: `release ${secret}` }],
+    };
+
+    await service.interpret(input);
+    const sent = String(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)).input);
+    expect(sent).not.toContain(secret);
+    expect(sent).toContain("[REDACTED_TOKEN]");
+    expect(input.commits[0]?.message).toContain(secret);
+
+    const failingService = new OpenAIDevelopmentEventModelService(
+      { apiKey, model },
+      vi.fn().mockRejectedValue(new Error(`provider detail ${secret}`)) as unknown as typeof fetch
+    );
+    const error = await failingService.interpret(input).catch((caught: unknown) => caught);
+    expect(String(error)).not.toContain(secret);
+  });
+
+  it("retains structural sensitive-looking file paths because the PDR permits file-path metadata", () => {
+    const filePaths = [".env", ".env.production", "keys/service.pem", "id_rsa", "credentials.json", "secrets.yaml"];
+    const prepared = minimizeOpenAIEvidence({
+      ...evidence,
+      commits: [{ ...evidence.commits[0]!, filePaths }],
+    });
+
+    expect(prepared.commits[0]?.filePaths).toEqual(filePaths);
   });
 
   it("enforces the serialized provider limit in UTF-8 bytes", () => {

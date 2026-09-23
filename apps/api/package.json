@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "pretest": "pnpm db:generate && pnpm --filter @developer-brand-copilot/config build && pnpm --filter @developer-brand-copilot/contracts build && pnpm --filter @developer-brand-copilot/ai build",
     "test": "vitest run",
+    "phase2:evaluate": "node dist/development-intelligence/phase2-evaluation.cli.js",
     "db:generate": "prisma generate --config prisma.config.ts",
     "db:validate": "prisma validate --config prisma.config.ts",
     "db:format": "prisma format --config prisma.config.ts",

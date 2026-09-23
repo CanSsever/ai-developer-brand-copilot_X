@@ -1,4 +1,5 @@
 import type {
+  DailyDevelopmentSummaryResponse,
   GitHubConnectionSummary,
   ProjectIntelligenceSummary,
   ProjectSummary,
@@ -16,6 +17,8 @@ interface DashboardViewProps {
   readonly error?: string | undefined;
   readonly intelligence?: ProjectIntelligenceSummary | null;
   readonly intelligenceLoadFailed?: boolean;
+  readonly dailySummary?: DailyDevelopmentSummaryResponse | null;
+  readonly dailySummaryLoadFailed?: boolean;
   readonly loadFailed: boolean;
   readonly projects: readonly ProjectSummary[];
   readonly selectedProjectId?: string | undefined;
@@ -104,6 +107,8 @@ export function DashboardView({
   error,
   intelligence = null,
   intelligenceLoadFailed = false,
+  dailySummary = null,
+  dailySummaryLoadFailed = false,
   loadFailed,
   projects,
   selectedProjectId,
@@ -239,6 +244,8 @@ export function DashboardView({
         <IntelligencePanel
           intelligence={intelligence}
           loadFailed={intelligenceLoadFailed}
+          dailySummary={dailySummary}
+          dailySummaryLoadFailed={dailySummaryLoadFailed}
         />
         </>
       ) : null}

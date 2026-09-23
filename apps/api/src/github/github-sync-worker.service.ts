@@ -18,6 +18,7 @@ import {
 } from "./github-commit-sync.service";
 import {
   GITHUB_SYNC_CLOCK,
+  GITHUB_SYNC_WORKER_ENABLED,
   GITHUB_SYNC_WORKER_OPTIONS,
 } from "./github.tokens";
 
@@ -65,12 +66,14 @@ export class GitHubSyncWorkerService
     @Inject(GITHUB_SYNC_CLOCK) private readonly clock: () => Date,
     @Inject(GITHUB_SYNC_WORKER_OPTIONS)
     private readonly options: GitHubSyncWorkerOptions,
+    @Inject(GITHUB_SYNC_WORKER_ENABLED)
+    private readonly enabled: boolean,
     @Optional()
     private readonly intelligenceWorker?: IntelligencePipelineWorkerService
   ) {}
 
   onModuleInit(): void {
-    if (process.env.NODE_ENV === "test") return;
+    if (!this.enabled || process.env.NODE_ENV === "test") return;
     this.logger.info("sync_worker_started");
     this.schedulePoll(0);
   }

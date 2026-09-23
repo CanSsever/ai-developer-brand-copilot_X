@@ -1,4 +1,5 @@
 import type {
+  DailyDevelopmentSummaryResponse,
   IntelligenceProcessingStatus,
   ProjectIntelligenceSummary,
 } from "@developer-brand-copilot/contracts";
@@ -56,7 +57,52 @@ function summary(
   };
 }
 
+function dailySummary(
+  status: DailyDevelopmentSummaryResponse["status"],
+  items: DailyDevelopmentSummaryResponse["items"] = []
+): DailyDevelopmentSummaryResponse {
+  const messages: Record<DailyDevelopmentSummaryResponse["status"], string> = {
+    completed: "Meaningful development for today is ready.",
+    failed: "Development intelligence for today could not be processed. Try syncing again later.",
+    no_activity: "No repository activity was recorded for this developer day.",
+    no_meaningful_events: "Repository activity was recorded, but no meaningful development event was detected.",
+    processing: "Repository activity for today is still being processed.",
+  };
+  return {
+    confidence: items.length ? 0.9 : null,
+    counts: { commits: items.length ? 3 : 0, excludedActivities: 1, meaningfulEvents: items.length },
+    developerDay: "2026-09-23", generationVersion: "daily-development-summary-v1",
+    items, projectId, projectStateVersion: 2, status, statusMessage: messages[status],
+    timezone: "Europe/Berlin", version: 1,
+  };
+}
+
 describe("IntelligencePanel", () => {
+  it("renders a meaningful factual development summary", () => {
+    render(<IntelligencePanel intelligence={summary()} loadFailed={false} dailySummary={dailySummary("completed", [{
+      developmentEventId: "event-1", summary: "Implemented evidence-backed daily summaries.",
+      title: "Completed daily summaries", type: "feature_completed",
+    }])} />);
+    expect(screen.getByRole("heading", { name: "Today" })).toBeInTheDocument();
+    expect(screen.getByText("3 commits · 1 meaningful events · 1 excluded/noise activities")).toBeInTheDocument();
+    expect(screen.getByText("Completed daily summaries")).toBeInTheDocument();
+    expect(screen.getByText("Implemented evidence-backed daily summaries.")).toBeInTheDocument();
+  });
+
+  it.each(["no_activity", "no_meaningful_events", "processing", "failed"] as const)(
+    "renders the %s daily-summary state without fabricated items",
+    (status) => {
+      const daily = dailySummary(status);
+      render(<IntelligencePanel intelligence={summary()} loadFailed={false} dailySummary={daily} />);
+      expect(screen.getByText(daily.statusMessage)).toBeInTheDocument();
+      expect(screen.getByText("No factual development items are available for this developer day.")).toBeInTheDocument();
+    }
+  );
+
+  it("isolates a daily-summary loading failure", () => {
+    render(<IntelligencePanel intelligence={summary()} loadFailed={false} dailySummaryLoadFailed />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Today's development summary could not be loaded");
+  });
   it("renders the no-intelligence and empty state clearly", () => {
     render(<IntelligencePanel intelligence={summary()} loadFailed={false} />);
     expect(screen.getByText(/No development intelligence yet/)).toBeInTheDocument();

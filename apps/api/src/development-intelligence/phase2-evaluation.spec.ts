@@ -28,6 +28,7 @@ function goldenObservations(): readonly Phase2EvaluationObservation[] {
           contentPotentialScore: 0.5,
           evidenceRefs: { commitIds: [scenario.input.commits[0]!.id], pullRequestIds: [] },
           importanceScore: 0.5,
+          relatedFeatureIds: [],
           summary: "Synthetic evidence-grounded outcome.",
           technologies: scenario.expected.technologies,
           title: "Synthetic outcome",
@@ -50,6 +51,15 @@ describe("Phase 2 synthetic evaluation harness", () => {
     expect(phase2EvaluationScenarios.filter((scenario) => scenario.kind === "event")).toHaveLength(50);
     expect(phase2EvaluationScenarios.filter((scenario) => scenario.kind === "abstention")).toHaveLength(10);
     expect(new Set(phase2EvaluationScenarios.map((scenario) => scenario.id)).size).toBe(60);
+    const boundaryVariants = phase2EvaluationScenarios.filter(
+      (scenario) => scenario.kind === "event" && scenario.id.endsWith("-05")
+    );
+    expect(boundaryVariants).toHaveLength(10);
+    expect(
+      boundaryVariants.every(
+        (scenario) => scenario.expected.decision === "event" && scenario.expected.confidencePolicy === "active"
+      )
+    ).toBe(true);
   });
 
   it("scores deterministic golden results against the Phase 2 offline thresholds", () => {
@@ -65,6 +75,23 @@ describe("Phase 2 synthetic evaluation harness", () => {
       technologyPrecision: 1,
       unsupportedClaimRate: 0,
     });
+  });
+
+  it("uses the same inclusive 0.60 confidence boundary as production", () => {
+    const withConfidence = (confidence: number) =>
+      goldenObservations().map((observation, index) =>
+        index === 0 && observation.interpretation?.decision === "event"
+          ? {
+              ...observation,
+              interpretation: {
+                ...observation.interpretation,
+                event: { ...observation.interpretation.event, confidence },
+              },
+            }
+          : observation
+      );
+    expect(scorePhase2Evaluation(withConfidence(0.6)).metric.confidencePolicyAccuracy).toBe(1);
+    expect(scorePhase2Evaluation(withConfidence(0.59)).metric.confidencePolicyAccuracy).toBe(49 / 50);
   });
 
   it("fails the offline thresholds when deterministic results do not identify events", () => {

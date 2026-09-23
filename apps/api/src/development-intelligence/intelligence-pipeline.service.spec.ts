@@ -16,6 +16,7 @@ import {
 const projectId = "10000000-0000-4000-8000-000000000001";
 const userId = "20000000-0000-4000-8000-000000000001";
 const syncRunId = "30000000-0000-4000-8000-000000000001";
+const repositoryId = "repository-1";
 const runId = "40000000-0000-4000-8000-000000000001";
 const leaseToken = "50000000-0000-4000-8000-000000000001";
 const now = new Date("2026-09-22T20:00:00.000Z");
@@ -25,7 +26,7 @@ const windowEnd = new Date("2026-09-22T19:00:00.000Z");
 function group(id: string) {
   return {
     commitEvidenceIds: [`commit-${id}`],
-    connectedRepositoryId: "repository-1",
+    connectedRepositoryId: repositoryId,
     evidenceFrom: windowStart,
     evidenceTo: windowEnd,
     groupKey: id.padEnd(64, "a").slice(0, 64),
@@ -372,6 +373,51 @@ describe("IntelligencePipelineService", () => {
       status: "reused",
     });
     expect(test.intelligenceRun.create).not.toHaveBeenCalled();
+  });
+
+  it("resolves an explicit historical succeeded source instead of selecting the latest boundary", async () => {
+    const historicalSourceId = "historical-source";
+    const test = harness({ groups: [group("historical-a"), group("historical-b")] });
+    test.prisma.syncRun.findFirst.mockImplementation(async (args) => {
+      expect(args.where.id).toBe(historicalSourceId);
+      expect(args.orderBy).toBeUndefined();
+      return { id: historicalSourceId, windowEnd, windowStart };
+    });
+    await expect(test.service.resolveReprocessingSource({ connectedRepositoryId: repositoryId, projectId, sourceSyncRunId: historicalSourceId, userId })).resolves.toMatchObject({ candidateGroupCount: 2, currentRun: null, sourceSyncRunId: historicalSourceId });
+  });
+
+  it.each(["unknown", "non-succeeded", "wrong Project", "wrong repository"])("rejects %s explicit source selection", async () => {
+    const test = harness();
+    test.prisma.syncRun.findFirst.mockResolvedValueOnce(null);
+    await expect(test.service.resolveReprocessingSource({ connectedRepositoryId: repositoryId, projectId, sourceSyncRunId: syncRunId, userId })).rejects.toMatchObject({ failureCode: "INTELLIGENCE_SOURCE_NOT_AVAILABLE" });
+    expect(test.grouping.selectAndGroup).not.toHaveBeenCalled();
+  });
+
+  it("validates explicit source scope and connection state", async () => {
+    const test = harness();
+    await test.service.resolveReprocessingSource({ connectedRepositoryId: repositoryId, projectId, sourceSyncRunId: syncRunId, userId });
+    expect(test.prisma.syncRun.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: syncRunId, status: "succeeded", connectedRepository: expect.objectContaining({ id: repositoryId, projectId, status: "active", gitHubConnection: { status: "active" }, project: { userId } }) }) }));
+  });
+
+  it("prevents a duplicate current-version historical run", async () => {
+    const test = harness();
+    test.intelligenceRun.findUnique.mockResolvedValueOnce({ id: "current-run", status: "succeeded" });
+    await expect(test.service.enqueueReprocessingForSource({ connectedRepositoryId: repositoryId, projectId, sourceSyncRunId: syncRunId, userId })).resolves.toEqual({ intelligenceRunId: "current-run", status: "reused" });
+    expect(test.intelligenceRun.create).not.toHaveBeenCalled();
+  });
+
+  it("does not let an old processing-version run block a current explicit source", async () => {
+    const test = harness();
+    test.intelligenceRun.findUnique.mockResolvedValueOnce(null);
+    await expect(test.service.enqueueReprocessingForSource({ connectedRepositoryId: repositoryId, projectId, sourceSyncRunId: syncRunId, userId })).resolves.toEqual({ intelligenceRunId: runId, status: "queued" });
+    expect(test.intelligenceRun.findUnique).toHaveBeenCalledWith({ select: { id: true, status: true }, where: { sourceSyncRunId_processingVersion: { processingVersion: test.processingVersion(), sourceSyncRunId: syncRunId } } });
+  });
+
+  it("preserves the one-active-run invariant when a concurrent explicit enqueue is rejected", async () => {
+    const test = harness();
+    test.intelligenceRun.create.mockRejectedValueOnce(Object.assign(new Error("active run"), { code: "P2002" }));
+    await expect(test.service.enqueueReprocessingForSource({ connectedRepositoryId: repositoryId, projectId, sourceSyncRunId: syncRunId, userId })).rejects.toMatchObject({ failureCode: "INTELLIGENCE_PERSISTENCE_FAILURE", retryable: true });
+    expect(test.intelligenceRun.create).toHaveBeenCalledOnce();
   });
 
   it("changes the aggregate processing version when interpretation changes", () => {

@@ -36,6 +36,7 @@ function claim(
 function harness(
   input: {
     readonly claimRows?: readonly ReturnType<typeof claim>[];
+    readonly enabled?: boolean;
     readonly options?: Partial<GitHubSyncWorkerOptions>;
   } = {}
 ) {
@@ -81,6 +82,7 @@ function harness(
     logger as unknown as StructuredLogger,
     () => new Date(now),
     options,
+    input.enabled ?? true,
     intelligenceWorker as unknown as IntelligencePipelineWorkerService
   );
   return { intelligenceWorker, logger, options, prisma, sync, worker };
@@ -94,6 +96,36 @@ function rawSql(mock: ReturnType<typeof vi.fn>, callIndex: number): string {
 }
 
 describe("GitHubSyncWorkerService", () => {
+  it("does not schedule a polling tick or invoke provider work when operational bootstrap disables workers", () => {
+    vi.useFakeTimers();
+    try {
+      const { intelligenceWorker, logger, sync, worker } = harness({ enabled: false });
+      worker.onModuleInit();
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(sync.executeClaimed).not.toHaveBeenCalled();
+      expect(intelligenceWorker.runOnce).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps normal production worker bootstrap enabled", async () => {
+    vi.useFakeTimers();
+    const previousNodeEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "production";
+      const { logger, worker } = harness({ enabled: true });
+      worker.onModuleInit();
+      expect(logger.info).toHaveBeenCalledWith("sync_worker_started");
+      expect(vi.getTimerCount()).toBe(1);
+      await worker.onApplicationShutdown();
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv;
+      vi.useRealTimers();
+    }
+  });
+
   it("services durable intelligence work through the existing polling tick", async () => {
     const { intelligenceWorker, worker } = harness();
     intelligenceWorker.runOnce.mockResolvedValueOnce(true);
@@ -125,7 +157,8 @@ describe("GitHubSyncWorkerService", () => {
       shared.sync as unknown as GitHubCommitSyncService,
       shared.logger as unknown as StructuredLogger,
       () => new Date(now),
-      shared.options
+      shared.options,
+      true
     );
 
     const results = await Promise.all([

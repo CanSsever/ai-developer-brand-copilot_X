@@ -22,6 +22,10 @@ import {
 } from "./intelligence-pipeline.tokens";
 import { IntelligenceReadController } from "./intelligence-read.controller";
 import { IntelligenceReadService } from "./intelligence-read.service";
+import {
+  DAILY_SUMMARY_CLOCK,
+  DailyDevelopmentSummaryService,
+} from "./daily-development-summary.service";
 
 @Module({})
 export class DevelopmentIntelligenceModule {
@@ -37,6 +41,8 @@ export class DevelopmentIntelligenceModule {
         IntelligencePipelineService,
         IntelligencePipelineWorkerService,
         IntelligenceReadService,
+        DailyDevelopmentSummaryService,
+        { provide: DAILY_SUMMARY_CLOCK, useValue: () => new Date() },
         { provide: INTELLIGENCE_PIPELINE_CLOCK, useValue: () => new Date() },
         {
           provide: INTELLIGENCE_PIPELINE_WORKER_OPTIONS,

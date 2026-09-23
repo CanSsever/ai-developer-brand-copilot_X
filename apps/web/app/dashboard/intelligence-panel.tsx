@@ -1,10 +1,13 @@
 import type {
+  DailyDevelopmentSummaryResponse,
   DevelopmentEventType,
   ProjectIntelligenceSummary,
   ProjectStateEventReference,
 } from "@developer-brand-copilot/contracts";
 
 interface IntelligencePanelProps {
+  readonly dailySummary?: DailyDevelopmentSummaryResponse | null;
+  readonly dailySummaryLoadFailed?: boolean;
   readonly intelligence: ProjectIntelligenceSummary | null;
   readonly loadFailed: boolean;
 }
@@ -48,7 +51,12 @@ function stateItems(
   );
 }
 
-export function IntelligencePanel({ intelligence, loadFailed }: IntelligencePanelProps) {
+export function IntelligencePanel({
+  dailySummary = null,
+  dailySummaryLoadFailed = false,
+  intelligence,
+  loadFailed,
+}: IntelligencePanelProps) {
   if (loadFailed) {
     return (
       <section aria-labelledby="intelligence-heading" className="rounded-lg border border-gray-200 bg-white p-5">
@@ -78,6 +86,35 @@ export function IntelligencePanel({ intelligence, loadFailed }: IntelligencePane
       ) : null}
 
       <div className="mt-5 grid gap-5">
+        <section aria-labelledby="today-heading" className="rounded-md border border-gray-200 p-4">
+          <h3 id="today-heading" className="font-semibold">Today</h3>
+          {dailySummaryLoadFailed ? (
+            <p role="alert" className="mt-2 text-sm">Today&apos;s development summary could not be loaded. Try again later.</p>
+          ) : dailySummary ? (
+            <div className="mt-2 text-sm">
+              <p aria-live="polite">{dailySummary.statusMessage}</p>
+              <p className="mt-1 text-gray-600">
+                {dailySummary.counts.commits} commits · {dailySummary.counts.meaningfulEvents} meaningful events · {dailySummary.counts.excludedActivities} excluded/noise activities
+              </p>
+              <h4 className="mt-4 font-medium">Development summary</h4>
+              {dailySummary.items.length > 0 ? (
+                <ul className="mt-2 list-disc space-y-2 pl-5">
+                  {dailySummary.items.map((item) => (
+                    <li key={item.developmentEventId}>
+                      <span className="font-medium">{item.title}</span>
+                      <span className="block text-gray-700">{item.summary}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-gray-600">No factual development items are available for this developer day.</p>
+              )}
+            </div>
+          ) : (
+            <p className="mt-2 text-sm text-gray-600">No daily summary is available yet.</p>
+          )}
+        </section>
+
         <section aria-labelledby="processing-heading" className="rounded-md border border-gray-200 p-4">
           <h3 id="processing-heading" className="font-semibold">Processing status</h3>
           {processing ? (

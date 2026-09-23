@@ -88,3 +88,35 @@ export interface ProjectIntelligenceSummary {
   readonly processing: IntelligenceProcessingSummary | null;
   readonly projectId: string;
 }
+
+export type DailyDevelopmentSummaryStatus =
+  | "no_activity"
+  | "no_meaningful_events"
+  | "processing"
+  | "failed"
+  | "completed";
+
+export interface DailyDevelopmentSummaryItem {
+  readonly developmentEventId: string;
+  readonly summary: string;
+  readonly title: string;
+  readonly type: DevelopmentEventType;
+}
+
+export interface DailyDevelopmentSummaryResponse {
+  readonly confidence: number | null;
+  readonly counts: {
+    readonly commits: number;
+    readonly excludedActivities: number;
+    readonly meaningfulEvents: number;
+  };
+  readonly developerDay: string;
+  readonly generationVersion: string;
+  readonly items: readonly DailyDevelopmentSummaryItem[];
+  readonly projectId: string;
+  readonly projectStateVersion: number | null;
+  readonly status: DailyDevelopmentSummaryStatus;
+  readonly statusMessage: string;
+  readonly timezone: string;
+  readonly version: number;
+}

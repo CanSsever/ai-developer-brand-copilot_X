@@ -176,7 +176,7 @@ PDR semantics used by the foundation:
 ### Validation, Audit, and Reprocessing
 
 - [x] every model attempt creates an `AIExecution` audit row before the request and records only required stage, model configuration, version, validation, timing, token-count, and safe failure metadata
-- [x] prompt version is `development-event-prompt-v1` and schema version is `development-event-schema-v1`
+- [x] current prompt version is `development-event-prompt-v2` and schema version is `development-event-schema-v2`
 - [x] input fingerprints cover canonical minimized evidence and the grouping boundary; extraction versions cover prompt, schema, and safe model configuration
 - [x] malformed, out-of-taxonomy, out-of-range, or unsupported-evidence output receives at most one constrained repair attempt and otherwise fails safely
 - [x] repeated interpretation under the same extraction boundary reuses the existing event without another model call
@@ -350,12 +350,12 @@ PDR semantics used by the foundation:
 - [x] live private-repository processing authorization was granted for the current Task 2.7 repository verification only
 - [x] an initial one-off backend runner attempt failed closed before database selection or network access when required OpenAI runtime configuration was absent
 - [x] the configured runtime now passes normal application configuration validation without recording any secret value
-- [x] the single authorized live attempt selected the current private repository and discovered two eligible evidence groups; bounded processing recorded four terminal `AI_CONFIGURATION_FAILURE` audit outcomes (two groups with the defined repair attempt)
+- [x] the initial authorized live attempt selected the current private repository and discovered two eligible evidence groups; bounded processing recorded four terminal `AI_CONFIGURATION_FAILURE` audit outcomes (two groups with the defined repair attempt)
 - [x] the failed-closed live attempt created no DevelopmentEvents, no commit/PR provenance links, and no new ProjectState version; the safe durable result is two terminal failed IntelligenceRuns and four failed AIExecution audit rows
 - [x] no retry or duplicate live model execution was performed after the safe failure category was observed
-- [x] versioned `phase2-synthetic-v1` Phase 2 offline regression corpus and deterministic scorer/harness added: exactly 60 non-private synthetic scenarios (50 event scenarios across the 10-value taxonomy and 10 abstention scenarios), including PR-backed, standalone, multi-commit, confidence-boundary, and supersession cases
+- [x] versioned `phase2-synthetic-v1` Phase 2 offline regression corpus and deterministic scorer/harness added: exactly 60 non-private synthetic scenarios (50 event scenarios across the 10-value taxonomy and 10 abstention scenarios), including PR-backed, standalone, multi-commit, confidence-boundary-named, and supersession cases
 - [x] the corpus preserves the current PDR Phase 2 offline thresholds: event precision >= 0.80, event recall >= 0.70, and event-type accuracy >= 0.80; deterministic golden outputs score 1.00 on these regression measures
-- [x] `phase2-synthetic-v1` is not the independently reviewable, development/held-out 100+ scenario Phase 5 release set and has not been run against OpenAI
+- [x] `phase2-synthetic-v1` is not the independently reviewable, development/held-out 100+ scenario Phase 5 release set
 - [x] provider failures are safely split across invalid request, authentication, authorization, missing model, rate limit, timeout/5xx, and network categories without reading provider response bodies
 - [x] strict provider schema omits unsupported `uniqueItems` while application validation continues rejecting duplicate evidence references
 - [x] outbound provider evidence is deterministically redacted and bounded by record, text, path, and UTF-8 serialized-byte limits without mutating persisted GitHub evidence
@@ -367,32 +367,65 @@ PDR semantics used by the foundation:
 - [x] all evidence roles retain event-scoped uniqueness, Project/repository trigger enforcement, stable provider identity, RLS, and raw-evidence deletion history without copying evidence text
 - [x] feature events receive a deterministic Project/repository-scoped identity from stable evidence lineage; the real interpreter-to-projector path reconciles `feature_started` to `feature_completed` without title matching
 - [x] an evolved candidate supersedes active prior candidates only when their complete explicit candidate membership is contained in the new group; `[A] -> [A,B]` reconciles, unchanged `[A,B]` replays, unrelated candidates remain independent, and partial overlaps do not reconcile
+- [x] commit lineage is reconciled by Project scope + GitHub repository provider identity + commit SHA, and pull-request lineage by Project scope + repository provider identity + provider PR identity; newly persisted candidate and supporting links retain that durable repository identity
+- [x] detached provenance with a retained repository provider identity continues to reconcile safely; historical detached links with a NULL identity fail closed and never match by SHA or provider PR identity alone
+- [x] additive migration `20260923210000_add_provenance_repository_provider_identity` backfills only attached raw commit/PR evidence, preserves unprovable detached historical NULLs, and extends the existing provenance triggers to reject attached evidence whose repository provider identity does not match its owning repository
 - [x] ProjectState and the current read model require at least one currently valid supporting commit or supporting merged PR; orphaned-only meaning stops contributing while historical DevelopmentEvents and ProjectStateVersions remain intact
 - [x] mixed support remains authoritative while one selected support is valid, and a supporting merged PR remains authoritative when a subordinate linked commit is orphaned
 - [x] stale queued/retryable and expired-running IntelligenceRuns from older processing versions become auditable terminal failures before current-version eligibility; current claims remain lease-fenced and the one-active-run database invariant handles two-worker races
 - [x] run counters distinguish accepted active events (`groupsSucceeded`) from low-confidence rejected events and insufficient-evidence decisions (`groupsRejected`); retryable and terminal failures remain `groupsFailed`
 - [x] deterministic cross-layer and migration coverage passes for provenance subset preservation, feature lifecycle, evolved groups, orphan reconciliation, rejected/insufficient outcomes, superseded exclusion, replay idempotency, and stale-version recovery
-- [x] hardening verification passes: 398 API tests, 32 web tests, and 13 configuration tests (443 total), plus 12 browser E2E tests
+- [x] hardening verification passes: 446 API tests, 38 web tests, and 13 configuration tests (497 total), plus 12 browser E2E tests; focused C5 provenance and migration coverage passes 40 tests
 - [x] lint, typecheck, production build, Prisma generation/validation, database connectivity, Gitleaks scans, and `git diff --check` pass
-- [x] additive migration `20260923120000_harden_development_event_lifecycle` is deployed; all 11 migrations are applied and current
+- [x] additive migrations through `20260923210000_add_provenance_repository_provider_identity` are deployed; all 14 migrations are applied and current
 
-### Remaining Phase 2 Blockers
+### DailyDevelopmentSummary Follow-up
 
-- [ ] implement and verify `DailyDevelopmentSummary` in its dedicated follow-up
-- [ ] obtain fresh scoped authorization and complete one successful private-repository live retry, semantic review, ProjectState/read-model verification, and identical-boundary idempotency proof
-- [ ] complete final Phase 2 exit-gate verification against the governing PDR
-- [ ] create and push the final Task 2.7 commit after explicit authorization
-- [ ] verify the resulting hosted GitHub Actions run
+- [x] the current PDR requires persisted, versioned summaries at `/projects/:projectId/daily-summaries`; no read-projection-only shortcut was used
+- [x] developer-day boundaries use the persisted Project IANA timezone and UTC timestamps, including UTC/local-date differences and DST transitions
+- [x] summaries use active authoritative DevelopmentEvents plus relevant current ProjectState and never reconstruct semantic meaning from raw commit text
+- [x] rejected, superseded, detached/orphan-invalidated, and candidate-only evidence cannot make an event visible; evolved active replacements are selected once by the established authority query
+- [x] persisted rows are keyed by Project, developer-day, timezone, input fingerprint, and generation version; unchanged reads reuse the same row and changed inputs append a new version while preserving historical semantics
+- [x] bounded factual summary items retain explicit DevelopmentEvent references; raw commit messages, pull-request text, file paths, prompts, responses, provider payloads, source, diffs, and credentials are absent from responses and logs
+- [x] no-activity, activity-without-meaningful-events, queued/running, failed, and completed-with-events states are explicit and do not fabricate progress
+- [x] the existing Development intelligence panel now shows Today counts, safe state copy, and factual development items without Phase 3 controls
+- [x] additive migration `20260923180000_add_daily_development_summaries` is deployed with append-only semantic protection, same-Project event constraints, one-current-summary enforcement, and owner-only RLS
+- [x] 25 focused unit/integration tests were added: 19 API and 6 web tests; the existing browser intelligence scenario now verifies the daily summary
+- [x] all 497 repository unit/integration tests pass: 446 API, 38 web, and 13 configuration tests; all 12 browser E2E tests pass
+- [x] lint, typecheck, production build, Prisma generation/validation, database connectivity/status, Gitleaks scans, and `git diff --check` pass
+- [x] DailyDevelopmentSummary implementation and its verification did not make a live OpenAI or GitHub request; the later scoped Phase 2 evaluation is recorded below
+
+### Final Phase 2 Closure Audit
+
+- [x] private-repository live Phase 2 verification passed, including semantic review, ProjectState/read-model verification, and identical-boundary idempotency (previously verified; no private replay in this audit)
+- [x] C1-C6 pre-live correctness hardening and L1/L2 operational support are verified
+- [x] durable evaluation artifact capture is verified: the ignored JSON artifact was independently read back as `succeeded` with 60 unique completed checkpoints, no raw prompt/response/input, and no production-domain writes
+- [x] the one authorized live `phase2-synthetic-v1` evaluation completed 60/60 scenarios with 60 initial Responses API calls, no repair calls, and no provider failures
+- [x] the three normative Phase 2 gates passed: precision 1.00 >= 0.80, recall 1.00 >= 0.70, and event-type accuracy 1.00 >= 0.80
+- [x] the historical artifact records 10 confidence-policy mismatches and 0.80 confidence-policy accuracy; its safe observations do not retain numeric confidence
+- [x] confidence audit found no production 0.60 threshold error: parser preserves the numeric score, production and evaluator classify exactly 0.60 as active, and the ten fixture labels incorrectly inferred rejection from a variant name without evidence of confidence below 0.60
+- [x] corrected only those ten fixture expectations to active and added exact-0.60 regression coverage; no model, prompt, parser, production policy, or three normative metric definitions changed, and the historical artifact remains unchanged
+- [x] the expectation-only correction does not require another live run for the three normative Phase 2 gates; the artifact's historical 0.80 confidence-policy accuracy is not silently rewritten
+- [x] `.next-e2e` was already git-ignored but omitted from ESLint's generated-output ignores; it is now excluded without disabling source lint
+- [x] final local gates pass: lint, typecheck, 469 API + 38 web + 13 config = 520 unit/integration tests, production build, 12 browser E2E tests, secret scan, and `git diff --check`
+- [x] Prisma generation, schema validation, connectivity, and migration status pass; 15 migrations are found and the database schema is up to date; no new migration was created for this audit
+- [x] all ten Phase 2 PDR deliverables are present: DevelopmentEvent schema, AI extraction, classification, evidence linking, importance scoring, confidence scoring, ProjectState, daily summary, review/debug view, and offline fixtures
+- [x] Phase 2 PDR exit gate passes: 60 versioned scenarios; precision 1.00, recall 1.00, type accuracy 1.00; visible events require valid support; confidence below 0.60 is withheld; ProjectState replay is idempotent; the daily summary and inspection surface answer "What did I actually build today?" from evidence-backed DevelopmentEvents
+
+### Remaining Delivery Work
+
+- [ ] create and push the final Task 2.7 commit after explicit authorization (not a PDR Phase 2 technical exit condition)
+- [ ] verify the resulting hosted GitHub Actions run after that push
 
 ### Task Status
 
-- [x] Task 2.7 INCOMPLETE
-- [ ] Task 2.7 VERIFIED COMPLETE
+- [ ] Task 2.7 INCOMPLETE
+- [x] Task 2.7 VERIFIED COMPLETE
 
 ## Phase Status
 
 - [x] Phase 0 VERIFIED COMPLETE
 - [x] Phase 1 VERIFIED COMPLETE
-- [ ] Phase 2 VERIFIED COMPLETE
-- [x] Phase 2 IN PROGRESS
+- [x] Phase 2 VERIFIED COMPLETE
+- [ ] Phase 2 IN PROGRESS
 - [x] Phase 3 NOT STARTED

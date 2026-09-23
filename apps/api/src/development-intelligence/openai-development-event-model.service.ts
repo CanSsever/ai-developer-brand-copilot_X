@@ -68,8 +68,8 @@ function retryAfterAt(response: Response): Date | null {
 function redactSensitiveValue(value: string): string {
   return value
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED_PRIVATE_KEY]")
-    .replace(/\b(?:Bearer|Authorization)\s+[:=]?\s*[A-Za-z0-9._~+/=-]{12,}/gi, "[REDACTED_AUTHORIZATION]")
-    .replace(/\b(?:sk|pk|ghp|github_pat)_[A-Za-z0-9_-]{12,}\b/gi, "[REDACTED_TOKEN]")
+    .replace(/\b(?:Bearer\s+|Authorization\s*:\s*(?:Bearer\s+)?)[A-Za-z0-9._~+/=-]{12,}/gi, "[REDACTED_AUTHORIZATION]")
+    .replace(/\b(?:sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{12,}|(?:sk|pk|gh[psuor]|github_pat)_[A-Za-z0-9_-]{12,})\b/gi, "[REDACTED_TOKEN]")
     .replace(/\b(password|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;]{6,}/gi, "$1=[REDACTED]")
     .replace(/\b([a-z][a-z0-9+.-]*:\/\/[^:\s/]+):[^@\s]+@/gi, "$1:[REDACTED]@");
 }

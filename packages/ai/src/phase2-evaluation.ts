@@ -76,11 +76,15 @@ function eventScenario(
   const commitId = `${id}-commit-1`;
   const hasPr = variant === "pr_backed" || variant === "pr_and_multi_commit";
   const multiCommit = variant === "multi_commit" || variant === "pr_and_multi_commit";
-  const confidencePolicy = variant === "confidence_boundary" ? "rejected" : "active";
+  // The variant name is not evidence that model confidence falls below 0.60.
+  // These explicit work descriptions support an event; low-confidence rejection
+  // is covered with deterministic numeric-boundary tests instead.
+  const confidencePolicy = "active";
   return {
     expected: { decision: "event", type: blueprint.type, technologies: blueprint.technologies, confidencePolicy },
     id,
     input: {
+      activeFeatures: [],
       commits: [
         {
           additions: 24,
@@ -119,6 +123,7 @@ const abstentions: readonly Phase2EvaluationScenario[] = [
     expected: { decision: "insufficient_evidence", reason: reason as "ambiguous" | "noise" | "insufficient_detail" },
     id,
     input: {
+      activeFeatures: [],
       commits: [{ additions: null, committedAt: "2026-01-16T10:00:00.000Z", deletions: null, filePaths: [], id: `${id}-commit-1`, message: message! }],
       evidenceFrom: "2026-01-16T09:00:00.000Z", evidenceTo: "2026-01-16T11:00:00.000Z", groupingReason: "synthetic_abstention", groupingVersion: "evidence-grouping-v1", pullRequests: [],
     },

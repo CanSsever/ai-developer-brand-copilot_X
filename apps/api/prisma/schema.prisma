@@ -30,6 +30,7 @@ model Project {
   aiExecutions             AIExecution[]
   projectState             ProjectState?
   intelligenceRuns         IntelligenceRun[]
+  dailyDevelopmentSummaries DailyDevelopmentSummary[]
 
   @@index([userId])
 }
@@ -349,8 +350,9 @@ model DevelopmentEvent {
   pullRequestEvidence      DevelopmentEventPullRequestEvidence[]
   projectStateVersionLinks ProjectStateVersionEvent[]
   aiExecutions             AIExecution[]
+  dailyDevelopmentSummaries DailyDevelopmentSummaryEvent[]
 
-  @@unique([projectId, eventKey, extractionVersion])
+  @@unique([projectId, eventKey, extractionVersion, inputFingerprint])
   @@index([projectId, occurredAt])
   @@index([projectId, status])
   @@index([projectId, inputFingerprint])
@@ -368,6 +370,7 @@ model AIExecution {
   modelConfigurationFingerprint String             @db.VarChar(64)
   promptVersion                 String             @db.VarChar(64)
   schemaVersion                 String             @db.VarChar(64)
+  extractionVersion             String?            @db.VarChar(64)
   attemptNumber                 Int
   validationStatus              AIValidationStatus @default(pending)
   failureCode                   String?            @db.VarChar(64)
@@ -382,6 +385,7 @@ model AIExecution {
   developmentEvent              DevelopmentEvent?  @relation(fields: [developmentEventId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@unique([projectId, stage, inputFingerprint, promptVersion, modelConfigurationFingerprint, attemptNumber])
+  @@index([projectId, stage, inputFingerprint, extractionVersion])
   @@index([projectId, stage, createdAt])
   @@index([developmentEventId])
 }
@@ -391,6 +395,7 @@ model DevelopmentEventCommitEvidence {
   developmentEventId String            @db.Uuid
   gitHubCommitId     String?           @db.Uuid
   commitSha          String            @db.VarChar(64)
+  repositoryProviderId BigInt?
   role               DevelopmentEventEvidenceRole @default(supporting)
   detachedAt         DateTime?         @db.Timestamptz(3)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
@@ -400,6 +405,7 @@ model DevelopmentEventCommitEvidence {
   @@unique([developmentEventId, commitSha])
   @@unique([developmentEventId, gitHubCommitId])
   @@index([gitHubCommitId])
+  @@index([repositoryProviderId, commitSha])
   @@index([developmentEventId, role])
 }
 
@@ -408,6 +414,7 @@ model DevelopmentEventPullRequestEvidence {
   developmentEventId        String             @db.Uuid
   gitHubPullRequestId       String?            @db.Uuid
   providerPullRequestId     BigInt             @db.BigInt
+  repositoryProviderId      BigInt?
   role                      DevelopmentEventEvidenceRole @default(supporting)
   detachedAt                DateTime?          @db.Timestamptz(3)
   createdAt                 DateTime           @default(now()) @db.Timestamptz(3)
@@ -417,6 +424,7 @@ model DevelopmentEventPullRequestEvidence {
   @@unique([developmentEventId, providerPullRequestId])
   @@unique([developmentEventId, gitHubPullRequestId])
   @@index([gitHubPullRequestId])
+  @@index([repositoryProviderId, providerPullRequestId])
   @@index([developmentEventId, role])
 }
 
@@ -474,5 +482,50 @@ model ProjectStateVersionEvent {
   developmentEvent      DevelopmentEvent    @relation(fields: [developmentEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
 
   @@unique([projectStateVersionId, developmentEventId])
+  @@index([developmentEventId])
+}
+
+enum DailyDevelopmentSummaryStatus {
+  no_activity
+  no_meaningful_events
+  processing
+  failed
+  completed
+}
+
+model DailyDevelopmentSummary {
+  id                    String                         @id @default(uuid()) @db.Uuid
+  projectId             String                         @db.Uuid
+  developerDay          DateTime                       @db.Date
+  timezone              String
+  inputFingerprint      String                         @db.VarChar(64)
+  generationVersion     String                         @db.VarChar(64)
+  version               Int
+  isCurrent             Boolean                        @default(true)
+  status                DailyDevelopmentSummaryStatus
+  commitCount           Int
+  eventCount            Int
+  excludedActivityCount Int
+  confidence            Decimal?                       @db.Decimal(4, 3)
+  summaryItems          Json                           @default("[]")
+  projectStateVersion   Int?
+  createdAt             DateTime                       @default(now()) @db.Timestamptz(3)
+  project               Project                        @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvents     DailyDevelopmentSummaryEvent[]
+
+  @@unique([projectId, developerDay, timezone, inputFingerprint, generationVersion])
+  @@unique([projectId, developerDay, timezone, version])
+  @@index([projectId, developerDay, timezone, isCurrent])
+}
+
+model DailyDevelopmentSummaryEvent {
+  id                        String                   @id @default(uuid()) @db.Uuid
+  dailyDevelopmentSummaryId String                   @db.Uuid
+  developmentEventId        String                   @db.Uuid
+  createdAt                 DateTime                 @default(now()) @db.Timestamptz(3)
+  dailyDevelopmentSummary   DailyDevelopmentSummary @relation(fields: [dailyDevelopmentSummaryId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvent          DevelopmentEvent        @relation(fields: [developmentEventId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([dailyDevelopmentSummaryId, developmentEventId])
   @@index([developmentEventId])
 }

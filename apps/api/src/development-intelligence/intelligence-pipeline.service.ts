@@ -47,6 +47,22 @@ export interface IntelligenceProcessingVersions {
   readonly projectionVersion: string;
 }
 
+export interface ExplicitReprocessingSourceRequest {
+  readonly connectedRepositoryId: string;
+  readonly projectId: string;
+  readonly sourceSyncRunId: string;
+  readonly userId: string;
+}
+
+export interface ExplicitReprocessingSourceResolution {
+  readonly candidateGroupCount: number;
+  readonly currentRun: { readonly id: string; readonly status: string } | null;
+  readonly processingVersion: string;
+  readonly sourceSyncRunId: string;
+  readonly sourceWindowEnd: Date;
+  readonly sourceWindowStart: Date;
+}
+
 interface EligibleIntelligenceSource {
   readonly id: string;
   readonly projectId: string;
@@ -222,6 +238,99 @@ export class IntelligencePipelineService {
         intelligenceRunId: run.id,
         processingVersion: this.versions.processingVersion,
         projectId,
+      });
+      return { intelligenceRunId: run.id, status: "queued" };
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new IntelligencePipelineError(
+          "INTELLIGENCE_PERSISTENCE_FAILURE",
+          true
+        );
+      }
+      throw error;
+    }
+  }
+
+  async resolveReprocessingSource(
+    request: ExplicitReprocessingSourceRequest
+  ): Promise<ExplicitReprocessingSourceResolution> {
+    const source = await this.prisma.syncRun.findFirst({
+      where: {
+        id: request.sourceSyncRunId,
+        status: "succeeded",
+        connectedRepository: {
+          id: request.connectedRepositoryId,
+          projectId: request.projectId,
+          status: "active",
+          gitHubConnection: { status: "active" },
+          project: { userId: request.userId },
+        },
+      },
+      select: { id: true, windowEnd: true, windowStart: true },
+    });
+    if (!source) {
+      throw new IntelligencePipelineError(
+        "INTELLIGENCE_SOURCE_NOT_AVAILABLE"
+      );
+    }
+    let groups: readonly { readonly connectedRepositoryId: string; readonly projectId: string }[];
+    try {
+      groups = await this.grouping.selectAndGroup({
+        evaluationBoundary: source.windowEnd,
+        projectId: request.projectId,
+        sourceWindowStart: source.windowStart,
+        userId: request.userId,
+      });
+    } catch {
+      throw new IntelligencePipelineError("INTELLIGENCE_SOURCE_NOT_AVAILABLE");
+    }
+    if (
+      groups.some(
+        (group) =>
+          group.projectId !== request.projectId ||
+          group.connectedRepositoryId !== request.connectedRepositoryId
+      )
+    ) {
+      throw new IntelligencePipelineError("INTELLIGENCE_SOURCE_NOT_AVAILABLE");
+    }
+    const currentRun = await this.prisma.intelligenceRun.findUnique({
+      where: {
+        sourceSyncRunId_processingVersion: {
+          sourceSyncRunId: source.id,
+          processingVersion: this.versions.processingVersion,
+        },
+      },
+      select: { id: true, status: true },
+    });
+    return {
+      candidateGroupCount: groups.length,
+      currentRun,
+      processingVersion: this.versions.processingVersion,
+      sourceSyncRunId: source.id,
+      sourceWindowEnd: source.windowEnd,
+      sourceWindowStart: source.windowStart,
+    };
+  }
+
+  async enqueueReprocessingForSource(
+    request: ExplicitReprocessingSourceRequest
+  ): Promise<{ readonly intelligenceRunId: string; readonly status: "queued" | "reused" }> {
+    const source = await this.resolveReprocessingSource(request);
+    if (source.currentRun) {
+      return { intelligenceRunId: source.currentRun.id, status: "reused" };
+    }
+    try {
+      const run = await this.createRun(
+        request.projectId,
+        source.sourceSyncRunId,
+        source.sourceWindowStart,
+        source.sourceWindowEnd,
+        "manual_reprocess"
+      );
+      this.logger.info("intelligence_reprocessing_started", {
+        intelligenceRunId: run.id,
+        processingVersion: this.versions.processingVersion,
+        projectId: request.projectId,
       });
       return { intelligenceRunId: run.id, status: "queued" };
     } catch (error) {

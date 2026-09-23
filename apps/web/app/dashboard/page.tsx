@@ -1,4 +1,5 @@
 import type {
+  DailyDevelopmentSummaryResponse,
   GitHubConnectionSummary,
   ProjectIntelligenceSummary,
   ProjectSummary,
@@ -34,6 +35,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   let loadFailed = false;
   let intelligence: ProjectIntelligenceSummary | null = null;
   let intelligenceLoadFailed = false;
+  let dailySummary: DailyDevelopmentSummaryResponse | null = null;
+  let dailySummaryLoadFailed = false;
   const query = await searchParams;
 
   try {
@@ -56,6 +59,16 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         }
         intelligenceLoadFailed = true;
       }
+      try {
+        dailySummary = await authenticatedApiRequest<DailyDevelopmentSummaryResponse>(
+          `/projects/${encodeURIComponent(selectedProject.id)}/daily-summaries/today`
+        );
+      } catch (error) {
+        if (error instanceof AuthenticatedApiError && error.status === 401) {
+          redirect("/?authError=authentication_required");
+        }
+        dailySummaryLoadFailed = true;
+      }
     }
   } catch (error) {
     if (error instanceof AuthenticatedApiError && error.status === 401) {
@@ -72,6 +85,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       loadFailed={loadFailed}
       intelligence={intelligence}
       intelligenceLoadFailed={intelligenceLoadFailed}
+      dailySummary={dailySummary}
+      dailySummaryLoadFailed={dailySummaryLoadFailed}
       projects={projects}
       selectedProjectId={first(query.projectId)}
       signOutAction={signOut}

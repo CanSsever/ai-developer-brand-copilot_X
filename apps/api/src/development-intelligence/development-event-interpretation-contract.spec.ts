@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  developmentEventInterpretationSchema,
   parseDevelopmentEventInterpretation,
 } from "@developer-brand-copilot/ai";
 import {
@@ -23,6 +24,7 @@ function output(
       importanceScore: 0.5,
       contentPotentialScore: 0.4,
       confidence: 0.8,
+      relatedFeatureIds: [],
       technologies: [],
       evidenceRefs: {
         commitIds: ["commit-1"],
@@ -86,5 +88,57 @@ describe("development event interpretation contract", () => {
       pullRequestIds
     );
     expect(parsed.errors).toContain("duplicate_evidence_ref");
+  });
+
+  it("accepts only allowlisted feature-completion relations", () => {
+    const allowed = new Set(["feature-1"]);
+    expect(
+      parseDevelopmentEventInterpretation(
+        output("feature_completed", { relatedFeatureIds: ["feature-1"] }),
+        commitIds,
+        pullRequestIds,
+        allowed
+      ).value
+    ).toMatchObject({ event: { relatedFeatureIds: ["feature-1"] } });
+    expect(
+      parseDevelopmentEventInterpretation(
+        output("feature_completed", { relatedFeatureIds: ["invented-feature"] }),
+        commitIds,
+        pullRequestIds,
+        allowed
+      ).errors
+    ).toContain("unsupported_related_feature_id");
+  });
+
+  it("keeps title, summary, and technology limits in deterministic application validation", () => {
+    const parsed = parseDevelopmentEventInterpretation(
+      output("feature_completed", {
+        title: "t".repeat(161),
+        summary: "s".repeat(1_201),
+        technologies: ["x".repeat(501)],
+      }),
+      commitIds,
+      pullRequestIds
+    );
+    expect(parsed.value).toBeNull();
+    expect(parsed.errors).toEqual(expect.arrayContaining([
+      "invalid_title",
+      "invalid_summary",
+      "invalid_technologies",
+    ]));
+  });
+
+  it("uses only the intended strict Structured Outputs subset", () => {
+    const serialized = JSON.stringify(developmentEventInterpretationSchema);
+    expect(developmentEventInterpretationSchema).toMatchObject({
+      additionalProperties: false,
+      required: ["decision", "event", "reason"],
+      type: "object",
+    });
+    expect(serialized).toMatch(/"anyOf"/);
+    expect(serialized).toMatch(/"additionalProperties":false/);
+    expect(serialized).not.toMatch(
+      /"uniqueItems"|"allOf"|"not"|"dependentRequired"|"dependentSchemas"|"if"|"then"|"else"|"nullable"|"patternProperties"/
+    );
   });
 });
