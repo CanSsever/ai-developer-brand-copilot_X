@@ -29,14 +29,25 @@ import {
   openAiInterpretationModelConfiguration,
 } from "./openai-development-event-model.service";
 
-const confidenceAcceptanceThreshold = 0.6;
+export const developmentEventScoringPolicy = {
+  confidenceAcceptanceThreshold: 0.6,
+  version: "development-event-scoring-v1",
+} as const;
+
+export const developmentEventLifecyclePolicyVersion =
+  "development-event-lifecycle-v1";
 
 type InterpretationFailureCode =
-  | "AI_CONFIGURATION_FAILURE"
+  | "AI_REQUEST_INVALID"
+  | "AI_AUTHENTICATION_FAILURE"
+  | "AI_AUTHORIZATION_FAILURE"
+  | "AI_MODEL_NOT_FOUND"
+  | "AI_RATE_LIMITED"
   | "AI_BUDGET_EXHAUSTED"
   | "AI_OUTPUT_INVALID"
   | "AI_PROVIDER_RESPONSE_INVALID"
   | "AI_PROVIDER_TRANSIENT_FAILURE"
+  | "AI_NETWORK_FAILURE"
   | "AI_REFUSAL"
   | "EVIDENCE_GROUP_NOT_AVAILABLE"
   | "EVIDENCE_SCOPE_INVALID"
@@ -61,6 +72,7 @@ export interface InterpretDevelopmentEventRequest {
 export type InterpretDevelopmentEventResult =
   | {
       readonly developmentEventId: string;
+      readonly eventStatus: "active" | "rejected";
       readonly status: "created" | "reused";
     }
   | {
@@ -96,6 +108,15 @@ interface PreparedEvidence {
   readonly pullRequests: readonly LoadedPullRequest[];
 }
 
+interface PriorCandidateEvent {
+  readonly commitEvidence: readonly { readonly gitHubCommitId: string | null }[];
+  readonly createdAt: Date;
+  readonly id: string;
+  readonly pullRequestEvidence: readonly {
+    readonly gitHubPullRequestId: string | null;
+  }[];
+}
+
 interface ValidAttempt {
   readonly executionId: string;
   readonly interpretation: DevelopmentEventInterpretation;
@@ -105,6 +126,37 @@ interface ValidAttempt {
 
 function fingerprint(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function featureIdentity(
+  projectId: string,
+  repositoryId: string,
+  prepared: PreparedEvidence
+): string {
+  const anchor = prepared.commits[0]
+    ? `commit:${prepared.commits[0].sha}`
+    : `pr:${prepared.pullRequests[0]?.providerPullRequestId.toString() ?? "missing"}`;
+  return fingerprint(
+    JSON.stringify({ anchor, projectId, repositoryId, version: "feature-identity-v1" })
+  );
+}
+
+function candidateIsContained(
+  prior: PriorCandidateEvent,
+  commitIds: ReadonlySet<string>,
+  pullRequestIds: ReadonlySet<string>
+): boolean {
+  const priorCommitIds = prior.commitEvidence
+    .map((link) => link.gitHubCommitId)
+    .filter((id): id is string => id !== null);
+  const priorPullRequestIds = prior.pullRequestEvidence
+    .map((link) => link.gitHubPullRequestId)
+    .filter((id): id is string => id !== null);
+  return (
+    priorCommitIds.length + priorPullRequestIds.length > 0 &&
+    priorCommitIds.every((id) => commitIds.has(id)) &&
+    priorPullRequestIds.every((id) => pullRequestIds.has(id))
+  );
 }
 
 function localDateParts(date: Date, timeZone: string) {
@@ -212,8 +264,10 @@ export class DevelopmentEventInterpreterService {
     this.modelConfigurationFingerprint = fingerprint(configuration);
     this.extractionVersion = fingerprint(
       JSON.stringify({
+        lifecyclePolicyVersion: developmentEventLifecyclePolicyVersion,
         modelConfigurationFingerprint: this.modelConfigurationFingerprint,
         promptVersion: developmentEventPromptVersion,
+        scoringPolicyVersion: developmentEventScoringPolicy.version,
         schemaVersion: developmentEventSchemaVersion,
       })
     );
@@ -243,10 +297,14 @@ export class DevelopmentEventInterpreterService {
           extractionVersion: this.extractionVersion,
         },
       },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (existing) {
-      return { developmentEventId: existing.id, status: "reused" };
+      return {
+        developmentEventId: existing.id,
+        eventStatus: existing.status === "rejected" ? "rejected" : "active",
+        status: "reused",
+      };
     }
     const priorInsufficientDecision = await this.prisma.aIExecution.findFirst({
       where: {
@@ -254,6 +312,7 @@ export class DevelopmentEventInterpreterService {
         stage: "development_event_interpretation",
         inputFingerprint: prepared.inputFingerprint,
         promptVersion: developmentEventPromptVersion,
+        schemaVersion: developmentEventSchemaVersion,
         modelConfigurationFingerprint: this.modelConfigurationFingerprint,
         status: "rejected",
         validationStatus: "valid",
@@ -308,14 +367,18 @@ export class DevelopmentEventInterpreterService {
     }
 
     try {
-      const eventId = await this.persistEvent(group, prepared, validAttempt);
+      const persisted = await this.persistEvent(group, prepared, validAttempt);
       this.logger.info("development_event_interpretation_succeeded", {
-        developmentEventId: eventId,
+        developmentEventId: persisted.id,
         groupingFingerprint: group.groupKey,
         processingVersion: this.extractionVersion,
         projectId: group.projectId,
       });
-      return { developmentEventId: eventId, status: "created" };
+      return {
+        developmentEventId: persisted.id,
+        eventStatus: persisted.status,
+        status: "created",
+      };
     } catch (error) {
       if (isUniqueConstraintError(error)) {
         const raced = await this.prisma.developmentEvent.findUnique({
@@ -326,7 +389,7 @@ export class DevelopmentEventInterpreterService {
               extractionVersion: this.extractionVersion,
             },
           },
-          select: { id: true },
+          select: { id: true, status: true },
         });
         if (raced) {
           await this.completeExecution(validAttempt, {
@@ -334,7 +397,11 @@ export class DevelopmentEventInterpreterService {
             status: "succeeded",
             validationStatus: "valid",
           });
-          return { developmentEventId: raced.id, status: "reused" };
+          return {
+            developmentEventId: raced.id,
+            eventStatus: raced.status === "rejected" ? "rejected" : "active",
+            status: "reused",
+          };
         }
       }
       await this.completeExecution(validAttempt, {
@@ -358,6 +425,7 @@ export class DevelopmentEventInterpreterService {
           id: { in: [...group.commitEvidenceIds] },
           connectedRepositoryId: group.connectedRepositoryId,
           connectedRepository: { projectId: group.projectId },
+          orphanedAt: null,
         },
         select: {
           additions: true,
@@ -564,13 +632,19 @@ export class DevelopmentEventInterpreterService {
     group: CandidateEvidenceGroup,
     prepared: PreparedEvidence,
     attempt: ValidAttempt
-  ): Promise<string> {
+  ): Promise<{ readonly id: string; readonly status: "active" | "rejected" }> {
     if (attempt.interpretation.decision !== "event") {
       throw new DevelopmentEventInterpretationError("AI_OUTPUT_INVALID");
     }
     const output = attempt.interpretation.event;
+    const selectedCommitIds = new Set(output.evidenceRefs.commitIds);
+    const selectedPullRequestIds = new Set(output.evidenceRefs.pullRequestIds);
     const status =
-      output.confidence < confidenceAcceptanceThreshold ? "rejected" : "active";
+      output.confidence < developmentEventScoringPolicy.confidenceAcceptanceThreshold ? "rejected" : "active";
+    const relatedFeatureIds =
+      output.type === "feature_started" || output.type === "feature_completed"
+        ? [featureIdentity(group.projectId, group.connectedRepositoryId, prepared)]
+        : [];
 
     return this.prisma.$transaction(async (transaction) => {
       const existing = await transaction.developmentEvent.findUnique({
@@ -581,22 +655,47 @@ export class DevelopmentEventInterpreterService {
             extractionVersion: this.extractionVersion,
           },
         },
-        select: { id: true },
+        select: { id: true, status: true },
       });
-      if (existing) return existing.id;
+      if (existing) {
+        return {
+          id: existing.id,
+          status: existing.status === "rejected" ? "rejected" : "active",
+        };
+      }
 
-      const previous =
+      const currentCommitIds = new Set(prepared.commits.map((commit) => commit.id));
+      const currentPullRequestIds = new Set(
+        prepared.pullRequests.map((pullRequest) => pullRequest.id)
+      );
+      const previousCandidates =
         status === "active"
-          ? await transaction.developmentEvent.findFirst({
+          ? await transaction.developmentEvent.findMany({
               where: {
                 projectId: group.projectId,
-                eventKey: group.groupKey,
                 status: "active",
+                OR: [
+                  { commitEvidence: { some: { gitHubCommitId: { in: [...currentCommitIds] } } } },
+                  {
+                    pullRequestEvidence: {
+                      some: { gitHubPullRequestId: { in: [...currentPullRequestIds] } },
+                    },
+                  },
+                ],
               },
               orderBy: { createdAt: "desc" },
-              select: { id: true },
+              select: {
+                commitEvidence: { select: { gitHubCommitId: true } },
+                createdAt: true,
+                id: true,
+                pullRequestEvidence: { select: { gitHubPullRequestId: true } },
+              },
             })
-          : null;
+          : [];
+      const superseded = previousCandidates.filter((candidate) =>
+        candidateIsContained(candidate, currentCommitIds, currentPullRequestIds)
+      );
+      const previous = superseded[0] ?? null;
       const created = await transaction.developmentEvent.create({
         data: {
           confidence: output.confidence,
@@ -607,7 +706,7 @@ export class DevelopmentEventInterpreterService {
           inputFingerprint: prepared.inputFingerprint,
           occurredAt: group.evidenceTo,
           projectId: group.projectId,
-          relatedFeatureIds: [],
+          relatedFeatureIds,
           status,
           summary: output.summary,
           supersedesEventId: previous?.id ?? null,
@@ -618,20 +717,27 @@ export class DevelopmentEventInterpreterService {
             create: prepared.commits.map((commit) => ({
               commitSha: commit.sha,
               gitHubCommitId: commit.id,
+              role: selectedCommitIds.has(commit.id) ? "supporting" : "candidate",
             })),
           },
           pullRequestEvidence: {
             create: prepared.pullRequests.map((pullRequest) => ({
               gitHubPullRequestId: pullRequest.id,
               providerPullRequestId: pullRequest.providerPullRequestId,
+              role: selectedPullRequestIds.has(pullRequest.id)
+                ? "supporting"
+                : "candidate",
             })),
           },
         },
         select: { id: true },
       });
-      if (previous) {
-        await transaction.developmentEvent.update({
-          where: { id: previous.id },
+      if (superseded.length > 0) {
+        await transaction.developmentEvent.updateMany({
+          where: {
+            id: { in: superseded.map((event) => event.id) },
+            status: "active",
+          },
           data: { status: "superseded" },
         });
       }
@@ -647,7 +753,7 @@ export class DevelopmentEventInterpreterService {
           validationStatus: "valid",
         },
       });
-      return created.id;
+      return { id: created.id, status };
     });
   }
 

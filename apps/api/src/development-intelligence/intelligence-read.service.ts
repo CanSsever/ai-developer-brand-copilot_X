@@ -114,7 +114,29 @@ export class IntelligenceReadService {
           },
         },
         developmentEvents: {
-          where: { status: "active" },
+          where: {
+            status: "active",
+            OR: [
+              {
+                commitEvidence: {
+                  some: {
+                    detachedAt: null,
+                    role: "supporting",
+                    gitHubCommit: { orphanedAt: null },
+                  },
+                },
+              },
+              {
+                pullRequestEvidence: {
+                  some: {
+                    detachedAt: null,
+                    role: "supporting",
+                    gitHubPullRequestId: { not: null },
+                  },
+                },
+              },
+            ],
+          },
           orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
           take: intelligenceEventLimit,
           select: {

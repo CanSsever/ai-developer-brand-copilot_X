@@ -67,6 +67,7 @@ export class IntelligencePipelineWorkerService {
   private async executeTick(): Promise<boolean> {
     const now = this.clock();
     await this.terminalizeExhausted(now);
+    await this.pipeline.terminalizeStaleActiveRuns();
     await this.requeueEligible(now);
     const queued = await this.pipeline.enqueueEligibleCompletedSync();
     const claimed = await this.claimNext(now);

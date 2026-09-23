@@ -22,6 +22,8 @@ interface EventFixture {
   eventKey: string;
   extractionVersion: string;
   id: string;
+  hasValidSupportingCommit: boolean;
+  hasValidSupportingPullRequest: boolean;
   importanceScore: Prisma.Decimal;
   inputFingerprint: string;
   occurredAt: Date;
@@ -45,6 +47,8 @@ function event(
     eventKey: id.padEnd(64, "a").slice(0, 64),
     extractionVersion: "development-event-extraction-v1",
     id,
+    hasValidSupportingCommit: true,
+    hasValidSupportingPullRequest: false,
     importanceScore: new Prisma.Decimal("0.800"),
     inputFingerprint: id.padEnd(64, "b").slice(0, 64),
     occurredAt: new Date("2026-09-20T10:00:00.000Z"),
@@ -110,7 +114,9 @@ function harness(options: {
             .filter(
               (item) =>
                 item.projectId === args.where.projectId &&
-                item.status === args.where.status
+                item.status === args.where.status &&
+                (item.hasValidSupportingCommit ||
+                  item.hasValidSupportingPullRequest)
             )
             .sort(
               (left, right) =>
@@ -416,6 +422,65 @@ describe("ProjectStateProjectorService", () => {
     await test.service.project(request);
     expect(test.versions[0]).toEqual(historical);
     expect(test.versions[1]?.links).toEqual(["new"]);
+  });
+
+  it("removes an orphaned-only event from current authority without rewriting history", async () => {
+    const supported = event("orphaned-later");
+    const test = harness({ events: [supported] });
+    await test.service.project(request);
+    const historical = cloneValue(test.versions[0]);
+
+    supported.hasValidSupportingCommit = false;
+    const result = await test.service.project(request);
+
+    expect(result).toMatchObject({ status: "created", version: 2 });
+    expect(test.versions[0]).toEqual(historical);
+    expect(test.versions[1]?.links).toEqual([]);
+  });
+
+  it("keeps mixed evidence authoritative while one supporting commit remains valid", async () => {
+    const test = harness({
+      events: [event("mixed", { hasValidSupportingCommit: true })],
+    });
+    await test.service.project(request);
+    expect(test.versions[0]?.links).toEqual(["mixed"]);
+  });
+
+  it("keeps PR-backed support authoritative when a subordinate commit is orphaned", async () => {
+    const test = harness({
+      events: [
+        event("pr-backed", {
+          hasValidSupportingCommit: false,
+          hasValidSupportingPullRequest: true,
+        }),
+      ],
+    });
+    await test.service.project(request);
+    expect(test.versions[0]?.links).toEqual(["pr-backed"]);
+  });
+
+  it("queries only active events with valid supporting-role evidence", async () => {
+    const test = harness();
+    await test.service.project(request);
+    expect(test.prisma.developmentEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          OR: expect.arrayContaining([
+            expect.objectContaining({
+              commitEvidence: {
+                some: expect.objectContaining({ role: "supporting" }),
+              },
+            }),
+            expect.objectContaining({
+              pullRequestEvidence: {
+                some: expect.objectContaining({ role: "supporting" }),
+              },
+            }),
+          ]),
+          status: "active",
+        }),
+      })
+    );
   });
 
   it("does not apply an event belonging to another Project", async () => {

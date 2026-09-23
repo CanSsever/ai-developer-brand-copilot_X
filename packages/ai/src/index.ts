@@ -3,6 +3,18 @@ import {
   type DevelopmentEventType,
 } from "@developer-brand-copilot/contracts";
 
+export {
+  phase2EvaluationCorpusVersion,
+  phase2EvaluationScenarioCount,
+  phase2EvaluationScenarios,
+  scorePhase2Evaluation,
+} from "./phase2-evaluation.js";
+export type {
+  Phase2EvaluationObservation,
+  Phase2EvaluationReport,
+  Phase2EvaluationScenario,
+} from "./phase2-evaluation.js";
+
 export const developmentEventPromptVersion = "development-event-prompt-v1";
 export const developmentEventSchemaVersion = "development-event-schema-v1";
 
@@ -117,12 +129,10 @@ export const developmentEventInterpretationSchema = {
                 commitIds: {
                   type: "array",
                   items: { type: "string" },
-                  uniqueItems: true,
                 },
                 pullRequestIds: {
                   type: "array",
                   items: { type: "string" },
-                  uniqueItems: true,
                 },
               },
             },
@@ -181,6 +191,10 @@ function stringArray(value: unknown, maximum: number): value is string[] {
         item.length <= 500
     )
   );
+}
+
+function hasDuplicate(value: readonly string[]): boolean {
+  return new Set(value).size !== value.length;
 }
 
 export function parseDevelopmentEventInterpretation(
@@ -248,6 +262,7 @@ export function parseDevelopmentEventInterpretation(
   } else {
     if (!hasOnlyKeys(refs, ["commitIds", "pullRequestIds"])) errors.push("unknown_evidence_ref_field");
     if (refs.commitIds.some((id) => !allowedCommitIds.has(id)) || refs.pullRequestIds.some((id) => !allowedPullRequestIds.has(id))) errors.push("unsupported_evidence_ref");
+    if (hasDuplicate(refs.commitIds) || hasDuplicate(refs.pullRequestIds)) errors.push("duplicate_evidence_ref");
     if (refs.commitIds.length + refs.pullRequestIds.length === 0) errors.push("missing_evidence_ref");
   }
   if (errors.length > 0) return { errors, value: null };

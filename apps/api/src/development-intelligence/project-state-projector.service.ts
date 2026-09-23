@@ -6,7 +6,7 @@ import { Prisma } from "../generated/prisma/client";
 import { PrismaService } from "../database/prisma.service";
 import { StructuredLogger } from "../observability/structured-logger";
 
-export const projectStateProjectionVersion = "project-state-projection-v1";
+export const projectStateProjectionVersion = "project-state-projection-v2";
 
 const recentMilestoneLimit = 20;
 const recentMilestoneWindowMs = 90 * 24 * 60 * 60 * 1000;
@@ -203,7 +203,30 @@ export class ProjectStateProjectorService {
           }
 
           const events = await transaction.developmentEvent.findMany({
-            where: { projectId: project.id, status: "active" },
+            where: {
+              projectId: project.id,
+              status: "active",
+              OR: [
+                {
+                  commitEvidence: {
+                    some: {
+                      detachedAt: null,
+                      role: "supporting",
+                      gitHubCommit: { orphanedAt: null },
+                    },
+                  },
+                },
+                {
+                  pullRequestEvidence: {
+                    some: {
+                      detachedAt: null,
+                      role: "supporting",
+                      gitHubPullRequestId: { not: null },
+                    },
+                  },
+                },
+              ],
+            },
             orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
             select: {
               confidence: true,

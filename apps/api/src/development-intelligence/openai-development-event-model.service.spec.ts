@@ -6,6 +6,7 @@ import {
 } from "./development-intelligence.tokens";
 import {
   AIProviderError,
+  minimizeOpenAIEvidence,
   OpenAIDevelopmentEventModelService,
 } from "./openai-development-event-model.service";
 
@@ -102,7 +103,7 @@ describe("OpenAIDevelopmentEventModelService", () => {
     expect(String(options?.body)).not.toContain(apiKey);
   });
 
-  it.each([408, 429, 500, 503])(
+  it.each([408, 500, 503])(
     "classifies HTTP %s as transient without reading the provider body",
     async (status) => {
       const fetchMock = vi.fn().mockResolvedValue(
@@ -120,15 +121,15 @@ describe("OpenAIDevelopmentEventModelService", () => {
     }
   );
 
-  it.each([400, 401, 403])(
-    "classifies HTTP %s as terminal configuration failure",
-    async (status) => {
+  it.each([[400, "AI_REQUEST_INVALID"], [401, "AI_AUTHENTICATION_FAILURE"], [403, "AI_AUTHORIZATION_FAILURE"], [404, "AI_MODEL_NOT_FOUND"]] as const)(
+    "classifies HTTP %s as a safe terminal provider category",
+    async (status, failureCode) => {
       const service = new OpenAIDevelopmentEventModelService(
         { apiKey, model },
         vi.fn().mockResolvedValue(response(status, {})) as unknown as typeof fetch
       );
       await expect(service.interpret(evidence)).rejects.toMatchObject({
-        failureCode: "AI_CONFIGURATION_FAILURE",
+        failureCode,
         retryable: false,
       } satisfies Partial<AIProviderError>);
     }
@@ -155,7 +156,7 @@ describe("OpenAIDevelopmentEventModelService", () => {
       vi.fn().mockRejectedValue(new Error("synthetic network detail")) as unknown as typeof fetch
     );
     await expect(service.interpret(evidence)).rejects.toMatchObject({
-      failureCode: "AI_PROVIDER_TRANSIENT_FAILURE",
+      failureCode: "AI_NETWORK_FAILURE",
       retryable: true,
     } satisfies Partial<AIProviderError>);
   });
@@ -173,7 +174,7 @@ describe("OpenAIDevelopmentEventModelService", () => {
     const before = Date.now();
     const error = await service.interpret(evidence).catch((caught: unknown) => caught);
     expect(error).toMatchObject({
-      failureCode: "AI_PROVIDER_TRANSIENT_FAILURE",
+      failureCode: "AI_RATE_LIMITED",
       retryable: true,
     } satisfies Partial<AIProviderError>);
     expect((error as AIProviderError).retryAfterAt?.getTime()).toBeGreaterThanOrEqual(
@@ -184,5 +185,30 @@ describe("OpenAIDevelopmentEventModelService", () => {
   it("exposes injectable tokens rather than a browser-facing client", () => {
     expect(typeof OPENAI_INTERPRETATION_CONFIG).toBe("symbol");
     expect(typeof OPENAI_INTERPRETATION_FETCH).toBe("symbol");
+  });
+
+  it("redacts sensitive values and bounds only the provider representation", () => {
+    const prepared = minimizeOpenAIEvidence({
+      ...evidence,
+      commits: [{ ...evidence.commits[0]!, message: "token=super-secret-value ghp_abcdefghijklmnop" }],
+    });
+    expect(prepared.commits[0]?.message).toContain("[REDACTED]");
+    expect(prepared.commits[0]?.message).not.toContain("super-secret-value");
+    expect(evidence.commits[0]?.message).toBe("Synthetic private commit message");
+  });
+
+  it("enforces the serialized provider limit in UTF-8 bytes", () => {
+    const prepared = minimizeOpenAIEvidence({
+      ...evidence,
+      commits: Array.from({ length: 25 }, (_, index) => ({
+        ...evidence.commits[0]!,
+        filePaths: Array.from({ length: 40 }, () => "秘密/".repeat(80)),
+        id: `commit-${index}`,
+        message: "秘密".repeat(500),
+      })),
+    });
+    expect(Buffer.byteLength(JSON.stringify(prepared), "utf8")).toBeLessThanOrEqual(
+      48_000
+    );
   });
 });

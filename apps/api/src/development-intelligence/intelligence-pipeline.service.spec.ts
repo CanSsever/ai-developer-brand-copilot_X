@@ -38,14 +38,21 @@ function group(id: string) {
 
 function harness(options: {
   groups?: ReturnType<typeof group>[];
-  interpretations?: (Error | { developmentEventId: string | null; status: string })[];
+  interpretations?: (
+    | Error
+    | {
+        developmentEventId: string | null;
+        eventStatus?: "active" | "rejected";
+        status: string;
+      }
+  )[];
   sourceAvailable?: boolean;
 } = {}) {
   const order: string[] = [];
   const groups = options.groups ?? [group("group-1")];
   const results = [
     ...(options.interpretations ?? [
-      { developmentEventId: "event-1", status: "created" },
+      { developmentEventId: "event-1", eventStatus: "active", status: "created" },
     ]),
   ];
   let processingVersion = "";
@@ -66,6 +73,7 @@ function harness(options: {
       order.push("interpretation");
       const result = results.shift() ?? {
         developmentEventId: "event-reused",
+        eventStatus: "active",
         status: "reused",
       };
       if (result instanceof Error) throw result;
@@ -87,6 +95,7 @@ function harness(options: {
   const source = {
     connectedRepository: { projectId },
     id: syncRunId,
+    projectId,
     windowEnd,
     windowStart,
   };
@@ -104,6 +113,10 @@ function harness(options: {
     updateMany: vi.fn().mockResolvedValue({ count: 1 }),
   };
   const prisma = {
+    $executeRaw: vi.fn().mockResolvedValue(0),
+    $queryRaw: vi
+      .fn()
+      .mockResolvedValue(options.sourceAvailable === false ? [] : [source]),
     intelligenceRun,
     syncRun: {
       findFirst: vi
@@ -140,9 +153,7 @@ describe("IntelligencePipelineService", () => {
   it("makes only succeeded SyncRuns eligible for automatic processing", async () => {
     const test = harness();
     await expect(test.service.enqueueEligibleCompletedSync()).resolves.toBe(true);
-    expect(test.prisma.syncRun.findFirst.mock.calls[0]?.[0].where.status).toBe(
-      "succeeded"
-    );
+    expect(String(test.prisma.$queryRaw.mock.calls[0]?.[0])).toContain("succeeded");
   });
 
   it("does not enqueue failed or incomplete synchronization boundaries", async () => {
@@ -173,6 +184,56 @@ describe("IntelligencePipelineService", () => {
     await test.service.executeClaimed(runId, leaseToken);
     expect(test.interpreter.interpret).toHaveBeenCalledTimes(3);
     expect(test.projector.project).toHaveBeenCalledOnce();
+  });
+
+  it("counts accepted and low-confidence rejected events separately", async () => {
+    const test = harness({
+      groups: [group("a"), group("b")],
+      interpretations: [
+        { developmentEventId: "event-a", eventStatus: "active", status: "created" },
+        { developmentEventId: "event-b", eventStatus: "rejected", status: "created" },
+      ],
+    });
+    await test.service.executeClaimed(runId, leaseToken);
+    expect(test.intelligenceRun.updateMany.mock.calls[0]?.[0].data).toMatchObject({
+      groupsDiscovered: 2,
+      groupsFailed: 0,
+      groupsRejected: 1,
+      groupsSucceeded: 1,
+    });
+  });
+
+  it("completes an all-rejected run without counting semantic success", async () => {
+    const test = harness({
+      groups: [group("a"), group("b")],
+      interpretations: [
+        { developmentEventId: "event-a", eventStatus: "rejected", status: "created" },
+        { developmentEventId: "event-b", eventStatus: "rejected", status: "created" },
+      ],
+    });
+    await test.service.executeClaimed(runId, leaseToken);
+    expect(test.intelligenceRun.updateMany.mock.calls[0]?.[0].data).toMatchObject({
+      groupsRejected: 2,
+      groupsSucceeded: 0,
+    });
+    expect(test.intelligenceRun.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: "succeeded" }) })
+    );
+  });
+
+  it("counts accepted plus insufficient-evidence decisions consistently", async () => {
+    const test = harness({
+      groups: [group("a"), group("b")],
+      interpretations: [
+        { developmentEventId: "event-a", eventStatus: "active", status: "created" },
+        { developmentEventId: null, status: "insufficient_evidence" },
+      ],
+    });
+    await test.service.executeClaimed(runId, leaseToken);
+    expect(test.intelligenceRun.updateMany.mock.calls[0]?.[0].data).toMatchObject({
+      groupsRejected: 1,
+      groupsSucceeded: 1,
+    });
   });
 
   it("defers projection when any group has a retryable failure", async () => {
@@ -270,6 +331,24 @@ describe("IntelligencePipelineService", () => {
     await expect(
       test.service.executeClaimed(runId, leaseToken)
     ).rejects.toMatchObject({ failureCode: "INTELLIGENCE_VERSION_STALE" });
+  });
+
+  it("terminalizes only stale queued, retryable, or expired running versions", async () => {
+    const test = harness();
+    await expect(test.service.terminalizeStaleActiveRuns()).resolves.toBe(0);
+    const sql = String(test.prisma.$executeRaw.mock.calls[0]?.[0]);
+    expect(sql).toContain("INTELLIGENCE_VERSION_STALE");
+    expect(sql).toContain("leaseExpiresAt");
+    expect(sql).toContain("processingVersion");
+  });
+
+  it("selects only the latest succeeded boundary lacking the current version", async () => {
+    const test = harness();
+    await test.service.enqueueEligibleCompletedSync();
+    const sql = String(test.prisma.$queryRaw.mock.calls[0]?.[0]);
+    expect(sql).toContain("DISTINCT ON");
+    expect(sql).toContain("processingVersion");
+    expect(sql).toContain("failed_retryable");
   });
 
   it("creates explicit owned reprocessing from the latest successful SyncRun", async () => {

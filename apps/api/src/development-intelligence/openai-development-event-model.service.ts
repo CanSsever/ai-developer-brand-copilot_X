@@ -19,10 +19,26 @@ export const openAiInterpretationModelConfiguration = {
   store: false,
 } as const;
 
+export const openAiInterpretationEvidenceLimits = {
+  maxCommitMessageLength: 500,
+  maxCommits: 25,
+  maxFilePathLength: 240,
+  maxFilePathsPerEvidence: 40,
+  maxPullRequestBodyLength: 1_500,
+  maxPullRequestTitleLength: 300,
+  maxPullRequests: 10,
+  maxSerializedBytes: 48_000,
+} as const;
+
 export type AIProviderFailureCode =
-  | "AI_CONFIGURATION_FAILURE"
+  | "AI_REQUEST_INVALID"
+  | "AI_AUTHENTICATION_FAILURE"
+  | "AI_AUTHORIZATION_FAILURE"
+  | "AI_MODEL_NOT_FOUND"
+  | "AI_RATE_LIMITED"
   | "AI_PROVIDER_RESPONSE_INVALID"
   | "AI_PROVIDER_TRANSIENT_FAILURE"
+  | "AI_NETWORK_FAILURE"
   | "AI_REFUSAL";
 
 export class AIProviderError extends Error {
@@ -47,6 +63,54 @@ function retryAfterAt(response: Response): Date | null {
   return Number.isFinite(timestamp) && timestamp > Date.now()
     ? new Date(Math.min(timestamp, Date.now() + 86_400_000))
     : null;
+}
+
+function redactSensitiveValue(value: string): string {
+  return value
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED_PRIVATE_KEY]")
+    .replace(/\b(?:Bearer|Authorization)\s+[:=]?\s*[A-Za-z0-9._~+/=-]{12,}/gi, "[REDACTED_AUTHORIZATION]")
+    .replace(/\b(?:sk|pk|ghp|github_pat)_[A-Za-z0-9_-]{12,}\b/gi, "[REDACTED_TOKEN]")
+    .replace(/\b(password|secret|token|api[_-]?key)\s*[:=]\s*[^\s,;]{6,}/gi, "$1=[REDACTED]")
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/[^:\s/]+):[^@\s]+@/gi, "$1:[REDACTED]@");
+}
+
+function bounded(value: string | null, maximum: number): string | null {
+  if (value === null) return null;
+  return redactSensitiveValue(value).slice(0, maximum);
+}
+
+/** Keeps the provider representation bounded and redacted; persisted evidence is untouched. */
+export function minimizeOpenAIEvidence(input: DevelopmentEventInterpretationInput): DevelopmentEventInterpretationInput {
+  const limited = {
+    ...input,
+    commits: input.commits.slice(0, openAiInterpretationEvidenceLimits.maxCommits).map((commit) => ({ ...commit, message: bounded(commit.message, openAiInterpretationEvidenceLimits.maxCommitMessageLength)!, filePaths: commit.filePaths.slice(0, openAiInterpretationEvidenceLimits.maxFilePathsPerEvidence).map((path) => bounded(path, openAiInterpretationEvidenceLimits.maxFilePathLength)!) })),
+    pullRequests: input.pullRequests.slice(0, openAiInterpretationEvidenceLimits.maxPullRequests).map((pullRequest) => ({ ...pullRequest, bodySummary: bounded(pullRequest.bodySummary, openAiInterpretationEvidenceLimits.maxPullRequestBodyLength), filePaths: pullRequest.filePaths.slice(0, openAiInterpretationEvidenceLimits.maxFilePathsPerEvidence).map((path) => bounded(path, openAiInterpretationEvidenceLimits.maxFilePathLength)!), title: bounded(pullRequest.title, openAiInterpretationEvidenceLimits.maxPullRequestTitleLength)! })),
+  };
+  const serialized = JSON.stringify(limited);
+  return Buffer.byteLength(serialized, "utf8") <=
+    openAiInterpretationEvidenceLimits.maxSerializedBytes
+    ? limited
+    : {
+        ...limited,
+        commits: limited.commits.slice(0, 1).map((commit) => ({
+          ...commit,
+          filePaths: [],
+        })),
+        pullRequests: limited.pullRequests.slice(0, 1).map((pullRequest) => ({
+          ...pullRequest,
+          filePaths: [],
+        })),
+      };
+}
+
+export function classifyOpenAIHttpFailure(status: number): AIProviderError {
+  if (status === 400) return new AIProviderError("AI_REQUEST_INVALID", false);
+  if (status === 401) return new AIProviderError("AI_AUTHENTICATION_FAILURE", false);
+  if (status === 403) return new AIProviderError("AI_AUTHORIZATION_FAILURE", false);
+  if (status === 404) return new AIProviderError("AI_MODEL_NOT_FOUND", false);
+  if (status === 429) return new AIProviderError("AI_RATE_LIMITED", true);
+  if (status === 408 || status >= 500) return new AIProviderError("AI_PROVIDER_TRANSIENT_FAILURE", true);
+  return new AIProviderError("AI_PROVIDER_RESPONSE_INVALID", false);
 }
 
 interface OpenAIResponseBody {
@@ -92,6 +156,7 @@ export class OpenAIDevelopmentEventModelService
     input: DevelopmentEventInterpretationInput,
     repairErrors: readonly string[] = []
   ): Promise<ModelInterpretationResult> {
+    const minimizedInput = minimizeOpenAIEvidence(input);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30_000);
     let response: Response;
@@ -109,7 +174,7 @@ export class OpenAIDevelopmentEventModelService
             openAiInterpretationModelConfiguration.maxOutputTokens,
           instructions: developmentEventInterpretationInstructions,
           input: JSON.stringify({
-            evidence: input,
+            evidence: minimizedInput,
             ...(repairErrors.length > 0
               ? { repairValidationErrors: repairErrors }
               : {}),
@@ -126,22 +191,17 @@ export class OpenAIDevelopmentEventModelService
         signal: controller.signal,
       });
     } catch {
-      throw new AIProviderError("AI_PROVIDER_TRANSIENT_FAILURE", true);
+      throw new AIProviderError("AI_NETWORK_FAILURE", true);
     } finally {
       clearTimeout(timeout);
     }
 
     if (!response.ok) {
-      const retryable =
-        response.status === 408 ||
-        response.status === 429 ||
-        response.status >= 500;
+      const failure = classifyOpenAIHttpFailure(response.status);
       throw new AIProviderError(
-        retryable
-          ? "AI_PROVIDER_TRANSIENT_FAILURE"
-          : "AI_CONFIGURATION_FAILURE",
-        retryable,
-        retryable ? retryAfterAt(response) : null
+        failure.failureCode,
+        failure.retryable,
+        failure.retryable ? retryAfterAt(response) : null
       );
     }
 

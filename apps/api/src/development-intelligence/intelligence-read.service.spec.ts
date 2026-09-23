@@ -140,7 +140,21 @@ describe("IntelligenceReadService", () => {
         where: { id: projectId, userId },
         select: expect.objectContaining({
           developmentEvents: expect.objectContaining({
-            where: { status: "active" },
+            where: expect.objectContaining({
+              OR: expect.arrayContaining([
+                expect.objectContaining({
+                  commitEvidence: {
+                    some: expect.objectContaining({ role: "supporting" }),
+                  },
+                }),
+                expect.objectContaining({
+                  pullRequestEvidence: {
+                    some: expect.objectContaining({ role: "supporting" }),
+                  },
+                }),
+              ]),
+              status: "active",
+            }),
             take: intelligenceEventLimit,
             orderBy: [
               { occurredAt: "desc" },

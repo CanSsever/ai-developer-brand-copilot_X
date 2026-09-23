@@ -44,6 +44,7 @@ function harness(options: {
     executeClaimed: options.executeError
       ? vi.fn().mockRejectedValue(options.executeError)
       : vi.fn().mockResolvedValue(undefined),
+    terminalizeStaleActiveRuns: vi.fn().mockResolvedValue(0),
   };
   const prisma = {
     $executeRaw: vi.fn().mockResolvedValue(0),
@@ -227,6 +228,17 @@ describe("IntelligencePipelineWorkerService", () => {
     expect(
       test.pipeline.enqueueEligibleCompletedSync.mock.invocationCallOrder[0]
     ).toBeLessThan(test.prisma.$queryRaw.mock.invocationCallOrder[0] ?? Infinity);
+  });
+
+  it("recovers stale versions before eligibility and claiming", async () => {
+    const test = harness();
+    await test.worker.runOnce();
+    expect(test.pipeline.terminalizeStaleActiveRuns).toHaveBeenCalledOnce();
+    expect(
+      test.pipeline.terminalizeStaleActiveRuns.mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      test.pipeline.enqueueEligibleCompletedSync.mock.invocationCallOrder[0] ?? Infinity
+    );
   });
 
   it("logs only safe run metadata on failure", async () => {

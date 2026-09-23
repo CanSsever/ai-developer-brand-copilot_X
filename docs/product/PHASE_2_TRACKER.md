@@ -216,7 +216,7 @@ PDR semantics used by the foundation:
 
 - [x] projection uses no model call because validated DevelopmentEvents already provide the structured semantic inputs required for state aggregation
 - [x] authoritative events are ordered by occurredAt, then createdAt, then immutable event ID
-- [x] projection version is project-state-projection-v1
+- [x] projection version is `project-state-projection-v2`; v2 excludes active historical events whose semantic supporting evidence is no longer valid
 - [x] the SHA-256 replay fingerprint covers the projection version and canonical authoritative event identity, semantic fields, scores, technologies, feature references, and extraction metadata
 - [x] an unchanged replay returns the existing current state/version and creates no duplicate snapshot or applied-event link
 - [x] a changed authoritative event set creates the next version and updates the single current state
@@ -255,7 +255,7 @@ PDR semantics used by the foundation:
 
 - [x] only a fully succeeded persisted SyncRun makes its committed evidence boundary eligible; queued, running, failed, and cancelled SyncRuns never trigger intelligence processing
 - [x] IntelligenceRun is the durable Project-owned processing unit and records its source SyncRun, fixed evidence window, trigger, complete processing-version set, lifecycle, attempts, retry time, lease, safe counters, and failure code
-- [x] automatic discovery selects only successful source SyncRuns that have never received an IntelligenceRun, so deploying a new version does not automatically replay historical evidence
+- [x] automatic discovery selects only the latest successful boundary per Project that lacks the current processing version; stale active versions are terminalized safely without replaying every historical SyncRun
 - [x] explicit owned reprocessing selects the latest successful SyncRun and is version-aware; an identical source/version boundary is reused
 - [x] the established Phase 1 polling loop services the independently claimed intelligence worker after synchronization work; no second scheduler or external queue was introduced
 - [x] job persistence contains no repository evidence text, prompt, response, source, diff, patch, provider payload, or credential
@@ -341,9 +341,53 @@ PDR semantics used by the foundation:
 
 - [x] Task 2.6 VERIFIED COMPLETE
 
-## Remaining Phase 2 Tasks
+## Task 2.7 — Development Intelligence Evaluation & Phase 2 Exit Gate
 
-- [ ] Task 2.7 — Phase 2 Evaluation & Exit Gate: NOT STARTED
+### Current Verification State
+
+- [x] pre-flight confirmed a clean worktree with the Task 2.6 commit present
+- [x] Prisma generation and validation, database connectivity, and migration status pass with all 10 migrations current
+- [x] live private-repository processing authorization was granted for the current Task 2.7 repository verification only
+- [x] an initial one-off backend runner attempt failed closed before database selection or network access when required OpenAI runtime configuration was absent
+- [x] the configured runtime now passes normal application configuration validation without recording any secret value
+- [x] the single authorized live attempt selected the current private repository and discovered two eligible evidence groups; bounded processing recorded four terminal `AI_CONFIGURATION_FAILURE` audit outcomes (two groups with the defined repair attempt)
+- [x] the failed-closed live attempt created no DevelopmentEvents, no commit/PR provenance links, and no new ProjectState version; the safe durable result is two terminal failed IntelligenceRuns and four failed AIExecution audit rows
+- [x] no retry or duplicate live model execution was performed after the safe failure category was observed
+- [x] versioned `phase2-synthetic-v1` Phase 2 offline regression corpus and deterministic scorer/harness added: exactly 60 non-private synthetic scenarios (50 event scenarios across the 10-value taxonomy and 10 abstention scenarios), including PR-backed, standalone, multi-commit, confidence-boundary, and supersession cases
+- [x] the corpus preserves the current PDR Phase 2 offline thresholds: event precision >= 0.80, event recall >= 0.70, and event-type accuracy >= 0.80; deterministic golden outputs score 1.00 on these regression measures
+- [x] `phase2-synthetic-v1` is not the independently reviewable, development/held-out 100+ scenario Phase 5 release set and has not been run against OpenAI
+- [x] provider failures are safely split across invalid request, authentication, authorization, missing model, rate limit, timeout/5xx, and network categories without reading provider response bodies
+- [x] strict provider schema omits unsupported `uniqueItems` while application validation continues rejecting duplicate evidence references
+- [x] outbound provider evidence is deterministically redacted and bounded by record, text, path, and UTF-8 serialized-byte limits without mutating persisted GitHub evidence
+- [x] scoring policy `development-event-scoring-v1`, schema version, prompt version, model configuration, and lifecycle policy all contribute to interpretation and aggregate processing identity
+
+### Cross-Layer Hardening
+
+- [x] candidate-group membership and model-selected semantic support are both preserved on the existing provenance links through `candidate | supporting` roles; `supporting` implies candidate membership and existing historical links migrate as supporting
+- [x] all evidence roles retain event-scoped uniqueness, Project/repository trigger enforcement, stable provider identity, RLS, and raw-evidence deletion history without copying evidence text
+- [x] feature events receive a deterministic Project/repository-scoped identity from stable evidence lineage; the real interpreter-to-projector path reconciles `feature_started` to `feature_completed` without title matching
+- [x] an evolved candidate supersedes active prior candidates only when their complete explicit candidate membership is contained in the new group; `[A] -> [A,B]` reconciles, unchanged `[A,B]` replays, unrelated candidates remain independent, and partial overlaps do not reconcile
+- [x] ProjectState and the current read model require at least one currently valid supporting commit or supporting merged PR; orphaned-only meaning stops contributing while historical DevelopmentEvents and ProjectStateVersions remain intact
+- [x] mixed support remains authoritative while one selected support is valid, and a supporting merged PR remains authoritative when a subordinate linked commit is orphaned
+- [x] stale queued/retryable and expired-running IntelligenceRuns from older processing versions become auditable terminal failures before current-version eligibility; current claims remain lease-fenced and the one-active-run database invariant handles two-worker races
+- [x] run counters distinguish accepted active events (`groupsSucceeded`) from low-confidence rejected events and insufficient-evidence decisions (`groupsRejected`); retryable and terminal failures remain `groupsFailed`
+- [x] deterministic cross-layer and migration coverage passes for provenance subset preservation, feature lifecycle, evolved groups, orphan reconciliation, rejected/insufficient outcomes, superseded exclusion, replay idempotency, and stale-version recovery
+- [x] hardening verification passes: 398 API tests, 32 web tests, and 13 configuration tests (443 total), plus 12 browser E2E tests
+- [x] lint, typecheck, production build, Prisma generation/validation, database connectivity, Gitleaks scans, and `git diff --check` pass
+- [x] additive migration `20260923120000_harden_development_event_lifecycle` is deployed; all 11 migrations are applied and current
+
+### Remaining Phase 2 Blockers
+
+- [ ] implement and verify `DailyDevelopmentSummary` in its dedicated follow-up
+- [ ] obtain fresh scoped authorization and complete one successful private-repository live retry, semantic review, ProjectState/read-model verification, and identical-boundary idempotency proof
+- [ ] complete final Phase 2 exit-gate verification against the governing PDR
+- [ ] create and push the final Task 2.7 commit after explicit authorization
+- [ ] verify the resulting hosted GitHub Actions run
+
+### Task Status
+
+- [x] Task 2.7 INCOMPLETE
+- [ ] Task 2.7 VERIFIED COMPLETE
 
 ## Phase Status
 

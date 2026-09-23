@@ -301,6 +301,11 @@ enum DevelopmentEventStatus {
   rejected
 }
 
+enum DevelopmentEventEvidenceRole {
+  candidate
+  supporting
+}
+
 enum AIExecutionStage {
   development_event_interpretation
 }
@@ -386,6 +391,7 @@ model DevelopmentEventCommitEvidence {
   developmentEventId String            @db.Uuid
   gitHubCommitId     String?           @db.Uuid
   commitSha          String            @db.VarChar(64)
+  role               DevelopmentEventEvidenceRole @default(supporting)
   detachedAt         DateTime?         @db.Timestamptz(3)
   createdAt          DateTime          @default(now()) @db.Timestamptz(3)
   developmentEvent   DevelopmentEvent  @relation(fields: [developmentEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -394,6 +400,7 @@ model DevelopmentEventCommitEvidence {
   @@unique([developmentEventId, commitSha])
   @@unique([developmentEventId, gitHubCommitId])
   @@index([gitHubCommitId])
+  @@index([developmentEventId, role])
 }
 
 model DevelopmentEventPullRequestEvidence {
@@ -401,6 +408,7 @@ model DevelopmentEventPullRequestEvidence {
   developmentEventId        String             @db.Uuid
   gitHubPullRequestId       String?            @db.Uuid
   providerPullRequestId     BigInt             @db.BigInt
+  role                      DevelopmentEventEvidenceRole @default(supporting)
   detachedAt                DateTime?          @db.Timestamptz(3)
   createdAt                 DateTime           @default(now()) @db.Timestamptz(3)
   developmentEvent          DevelopmentEvent   @relation(fields: [developmentEventId], references: [id], onDelete: Cascade, onUpdate: Cascade)
@@ -409,6 +417,7 @@ model DevelopmentEventPullRequestEvidence {
   @@unique([developmentEventId, providerPullRequestId])
   @@unique([developmentEventId, gitHubPullRequestId])
   @@index([gitHubPullRequestId])
+  @@index([developmentEventId, role])
 }
 
 model ProjectState {

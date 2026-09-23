@@ -76,4 +76,15 @@ describe("development event interpretation contract", () => {
       event: { technologies: ["NestJS", "TypeScript"] },
     });
   });
+
+  it("rejects duplicate evidence references after provider-side uniqueItems removal", () => {
+    const parsed = parseDevelopmentEventInterpretation(
+      output("feature_completed", {
+        evidenceRefs: { commitIds: ["commit-1", "commit-1"], pullRequestIds: [] },
+      }),
+      commitIds,
+      pullRequestIds
+    );
+    expect(parsed.errors).toContain("duplicate_evidence_ref");
+  });
 });

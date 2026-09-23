@@ -10,6 +10,7 @@ import {
 import type { EvidenceGroupingService } from "./evidence-grouping.service";
 import type { CandidateEvidenceGroup } from "./evidence-grouping.types";
 import { AIProviderError } from "./openai-development-event-model.service";
+import { ProjectStateProjectorService } from "./project-state-projector.service";
 
 const projectId = "10000000-0000-4000-8000-000000000001";
 const repositoryId = "20000000-0000-4000-8000-000000000001";
@@ -31,6 +32,7 @@ const groupingRequest = {
 
 function candidate(options: {
   readonly commitIds?: readonly string[];
+  readonly key?: string;
   readonly pullRequestIds?: readonly string[];
   readonly reason?: "merged_pull_request" | "standalone_commit_chain";
 } = {}): CandidateEvidenceGroup {
@@ -39,7 +41,7 @@ function candidate(options: {
     connectedRepositoryId: repositoryId,
     evidenceFrom: new Date("2026-09-20T10:00:00.000Z"),
     evidenceTo: new Date("2026-09-20T12:00:00.000Z"),
-    groupKey,
+    groupKey: options.key ?? groupKey,
     groupingVersion: "evidence-grouping-v1",
     projectId,
     pullRequestEvidenceIds: options.pullRequestIds ?? ["pr-1"],
@@ -69,8 +71,11 @@ function validOutput(overrides: Record<string, unknown> = {}): string {
 }
 
 interface StoredEvent {
+  readonly commitIds?: readonly string[];
+  readonly eventKey?: string;
   readonly extractionVersion: string;
   readonly id: string;
+  readonly pullRequestIds?: readonly string[];
   status: string;
 }
 
@@ -131,6 +136,7 @@ function harness(options: {
       async (args: {
         where: {
           projectId_eventKey_extractionVersion: {
+            eventKey: string;
             extractionVersion: string;
           };
         };
@@ -138,17 +144,48 @@ function harness(options: {
         storedEvents.find(
           (event) =>
             event.extractionVersion ===
-            args.where.projectId_eventKey_extractionVersion.extractionVersion
+              args.where.projectId_eventKey_extractionVersion.extractionVersion &&
+            (event.eventKey ?? group.groupKey) ===
+              args.where.projectId_eventKey_extractionVersion.eventKey
         ) ?? null
     ),
     findFirst: vi.fn().mockImplementation(async () => {
       return [...storedEvents].reverse().find((event) => event.status === "active") ?? null;
     }),
+    findMany: vi.fn().mockImplementation(async () =>
+      [...storedEvents]
+        .reverse()
+        .filter((event) => event.status === "active")
+        .map((event) => ({
+          ...event,
+          commitEvidence: (event.commitIds ?? ["commit-1"]).map(
+            (gitHubCommitId) => ({ gitHubCommitId })
+          ),
+          createdAt: new Date("2026-09-20T12:00:00.000Z"),
+          pullRequestEvidence: (
+            event.pullRequestIds ??
+            (group.pullRequestEvidenceIds.length > 0 ? ["pr-1"] : [])
+          ).map((gitHubPullRequestId) => ({ gitHubPullRequestId })),
+        }))
+    ),
     create: vi.fn().mockImplementation(
-      async (args: { data: { extractionVersion: string; status: string } }) => {
+      async (args: {
+        data: {
+          commitEvidence: { create: { gitHubCommitId: string }[] };
+          eventKey: string;
+          extractionVersion: string;
+          pullRequestEvidence: { create: { gitHubPullRequestId: string }[] };
+          status: string;
+        };
+      }) => {
         const event = {
+          commitIds: args.data.commitEvidence.create.map((link) => link.gitHubCommitId),
+          eventKey: args.data.eventKey,
           extractionVersion: args.data.extractionVersion,
           id: `event-${storedEvents.length + 1}`,
+          pullRequestIds: args.data.pullRequestEvidence.create.map(
+            (link) => link.gitHubPullRequestId
+          ),
           status: args.data.status,
         };
         storedEvents.push(event);
@@ -160,6 +197,14 @@ function harness(options: {
         const event = storedEvents.find((item) => item.id === args.where.id);
         if (event) event.status = args.data.status;
         return event;
+      }
+    ),
+    updateMany: vi.fn().mockImplementation(
+      async (args: { where: { id: { in: string[] } }; data: { status: string } }) => {
+        for (const event of storedEvents) {
+          if (args.where.id.in.includes(event.id)) event.status = args.data.status;
+        }
+        return { count: args.where.id.in.length };
       }
     ),
   };
@@ -222,7 +267,11 @@ describe("DevelopmentEventInterpreterService", () => {
     const { developmentEvent, service } = harness();
     const result = await service.interpret({ groupKey, grouping: groupingRequest });
 
-    expect(result).toEqual({ developmentEventId: "event-1", status: "created" });
+    expect(result).toEqual({
+      developmentEventId: "event-1",
+      eventStatus: "active",
+      status: "created",
+    });
     expect(developmentEvent.create).toHaveBeenCalledOnce();
     expect(developmentEvent.create.mock.calls[0]?.[0].data).toMatchObject({
       eventKey: groupKey,
@@ -287,8 +336,8 @@ describe("DevelopmentEventInterpreterService", () => {
     await service.interpret({ groupKey, grouping: groupingRequest });
     expect(developmentEvent.create.mock.calls[0]?.[0].data.commitEvidence.create)
       .toEqual([
-        { commitSha: firstSha, gitHubCommitId: "commit-1" },
-        { commitSha: secondSha, gitHubCommitId: "commit-2" },
+        { commitSha: firstSha, gitHubCommitId: "commit-1", role: "supporting" },
+        { commitSha: secondSha, gitHubCommitId: "commit-2", role: "supporting" },
       ]);
   });
 
@@ -298,7 +347,11 @@ describe("DevelopmentEventInterpreterService", () => {
 
     expect(developmentEvent.create.mock.calls[0]?.[0].data.pullRequestEvidence.create)
       .toEqual([
-        { gitHubPullRequestId: "pr-1", providerPullRequestId: 101n },
+        {
+          gitHubPullRequestId: "pr-1",
+          providerPullRequestId: 101n,
+          role: "supporting",
+        },
       ]);
   });
 
@@ -377,9 +430,209 @@ describe("DevelopmentEventInterpreterService", () => {
     const { developmentEvent, service } = harness({
       outputs: [validOutput({ confidence: 0.59 })],
     });
-    await service.interpret({ groupKey, grouping: groupingRequest });
+    await expect(
+      service.interpret({ groupKey, grouping: groupingRequest })
+    ).resolves.toMatchObject({ eventStatus: "rejected" });
     expect(developmentEvent.create.mock.calls[0]?.[0].data.status).toBe("rejected");
     expect(developmentEvent.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("preserves every candidate link while marking only selected support", async () => {
+    const group = candidate({ commitIds: ["commit-1", "commit-2"], pullRequestIds: [] });
+    const test = harness({
+      group,
+      pullRequests: [],
+      commits: [
+        {
+          additions: 1,
+          committedAt: new Date("2026-09-20T10:00:00.000Z"),
+          deletions: 0,
+          files: [{ path: "src/one.ts" }],
+          id: "commit-1",
+          message: "Candidate context",
+          sha: firstSha,
+        },
+        {
+          additions: 2,
+          committedAt: new Date("2026-09-20T11:00:00.000Z"),
+          deletions: 0,
+          files: [{ path: "src/two.ts" }],
+          id: "commit-2",
+          message: "Direct support",
+          sha: secondSha,
+        },
+      ],
+      outputs: [
+        validOutput({
+          evidenceRefs: { commitIds: ["commit-2"], pullRequestIds: [] },
+        }),
+      ],
+    });
+
+    await test.service.interpret({ groupKey, grouping: groupingRequest });
+    expect(test.developmentEvent.create.mock.calls[0]?.[0].data.commitEvidence.create)
+      .toEqual([
+        { commitSha: firstSha, gitHubCommitId: "commit-1", role: "candidate" },
+        { commitSha: secondSha, gitHubCommitId: "commit-2", role: "supporting" },
+      ]);
+  });
+
+  it("keeps feature identity stable and supersedes [A] when the group evolves to [A,B]", async () => {
+    const firstGroup = candidate({ commitIds: ["commit-1"], pullRequestIds: [], key: "a".repeat(64) });
+    const test = harness({
+      group: firstGroup,
+      pullRequests: [],
+      outputs: [
+        validOutput({
+          type: "feature_started",
+          evidenceRefs: { commitIds: ["commit-1"], pullRequestIds: [] },
+        }),
+        validOutput({
+          type: "feature_completed",
+          evidenceRefs: { commitIds: ["commit-2"], pullRequestIds: [] },
+        }),
+      ],
+    });
+    await test.service.interpret({ groupKey: firstGroup.groupKey, grouping: groupingRequest });
+    const startedFeatureIds = test.developmentEvent.create.mock.calls[0]?.[0].data.relatedFeatureIds;
+
+    const evolvedGroup = candidate({
+      commitIds: ["commit-1", "commit-2"],
+      pullRequestIds: [],
+      key: "b".repeat(64),
+    });
+    test.grouping.selectAndGroup.mockResolvedValue([evolvedGroup]);
+    test.prisma.gitHubCommit.findMany.mockResolvedValue([
+      {
+        additions: 12,
+        committedAt: new Date("2026-09-20T10:00:00.000Z"),
+        deletions: 3,
+        files: [{ path: privatePath }],
+        id: "commit-1",
+        message: privateMessage,
+        sha: firstSha,
+      },
+      {
+        additions: 2,
+        committedAt: new Date("2026-09-20T11:00:00.000Z"),
+        deletions: 0,
+        files: [{ path: "src/private/synthetic-file.ts" }],
+        id: "commit-2",
+        message: "Complete feature",
+        sha: secondSha,
+      },
+    ]);
+    await test.service.interpret({ groupKey: evolvedGroup.groupKey, grouping: groupingRequest });
+
+    expect(test.developmentEvent.create.mock.calls[1]?.[0].data.relatedFeatureIds)
+      .toEqual(startedFeatureIds);
+    expect(test.developmentEvent.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["event-1"] }, status: "active" },
+      data: { status: "superseded" },
+    });
+
+    let projectedState: Record<string, unknown> | null = null;
+    const projectedEvents = test.developmentEvent.create.mock.calls
+      .map((call, index) => ({
+        ...call[0].data,
+        createdAt: new Date(`2026-09-20T12:00:0${index}.000Z`),
+        id: `event-${index + 1}`,
+      }))
+      .filter((created) =>
+        test.storedEvents.some(
+          (stored) => stored.id === created.id && stored.status === "active"
+        )
+      );
+    const projectorPrisma = {
+      $transaction: vi.fn().mockImplementation(async (callback) =>
+        callback({
+          developmentEvent: { findMany: vi.fn().mockResolvedValue(projectedEvents) },
+          project: {
+            findFirst: vi.fn().mockResolvedValue({
+              createdAt: new Date("2026-09-01T00:00:00.000Z"),
+              id: projectId,
+            }),
+          },
+          projectState: {
+            create: vi.fn().mockImplementation(async ({ data }) => {
+              projectedState = { ...data, id: "state-1" };
+              return { id: "state-1" };
+            }),
+            findUnique: vi.fn().mockResolvedValue(null),
+          },
+          projectStateVersion: {
+            create: vi.fn().mockResolvedValue({ id: "state-version-1" }),
+          },
+        })
+      ),
+    };
+    const projector = new ProjectStateProjectorService(
+      projectorPrisma as unknown as PrismaService,
+      test.logger as unknown as StructuredLogger
+    );
+    await projector.project({ projectId, userId });
+    expect(projectedState).toMatchObject({
+      activeFeatures: [],
+      version: 1,
+    });
+    expect(
+      (projectedState as unknown as { completedFeatures: unknown[] })
+        .completedFeatures
+    ).toHaveLength(1);
+  });
+
+  it("does not reconcile a partial overlap when neither candidate group contains the other", async () => {
+    const currentGroup = candidate({
+      commitIds: ["commit-2", "commit-3"],
+      pullRequestIds: [],
+      key: "b".repeat(64),
+    });
+    const test = harness({
+      group: currentGroup,
+      previous: {
+        commitIds: ["commit-1", "commit-2"],
+        eventKey: "a".repeat(64),
+        extractionVersion: "older-extraction-version",
+        id: "event-prior",
+        pullRequestIds: [],
+        status: "active",
+      },
+      pullRequests: [],
+      commits: [
+        {
+          additions: 1,
+          committedAt: new Date("2026-09-20T11:00:00.000Z"),
+          deletions: 0,
+          files: [{ path: "src/shared.ts" }],
+          id: "commit-2",
+          message: "Shared structural context",
+          sha: secondSha,
+        },
+        {
+          additions: 1,
+          committedAt: new Date("2026-09-20T12:00:00.000Z"),
+          deletions: 0,
+          files: [{ path: "src/independent.ts" }],
+          id: "commit-3",
+          message: "Independent outcome",
+          sha: "3".repeat(40),
+        },
+      ],
+      outputs: [
+        validOutput({
+          type: "bug_fixed",
+          evidenceRefs: { commitIds: ["commit-3"], pullRequestIds: [] },
+        }),
+      ],
+    });
+
+    await test.service.interpret({
+      groupKey: currentGroup.groupKey,
+      grouping: groupingRequest,
+    });
+    expect(test.developmentEvent.updateMany).not.toHaveBeenCalled();
+    expect(test.developmentEvent.create.mock.calls[0]?.[0].data.supersedesEventId)
+      .toBeNull();
   });
 
   it("reuses the same event for unchanged input and interpretation version", async () => {
@@ -387,8 +640,8 @@ describe("DevelopmentEventInterpreterService", () => {
     const first = await service.interpret({ groupKey, grouping: groupingRequest });
     const second = await service.interpret({ groupKey, grouping: groupingRequest });
 
-    expect(first).toEqual({ developmentEventId: "event-1", status: "created" });
-    expect(second).toEqual({ developmentEventId: "event-1", status: "reused" });
+    expect(first).toEqual({ developmentEventId: "event-1", eventStatus: "active", status: "created" });
+    expect(second).toEqual({ developmentEventId: "event-1", eventStatus: "active", status: "reused" });
     expect(modelClient.interpret).toHaveBeenCalledOnce();
     expect(developmentEvent.create).toHaveBeenCalledOnce();
   });
@@ -408,11 +661,11 @@ describe("DevelopmentEventInterpreterService", () => {
       groupKey,
       grouping: groupingRequest,
     });
-    expect(result).toEqual({ developmentEventId: "event-2", status: "created" });
+    expect(result).toEqual({ developmentEventId: "event-2", eventStatus: "active", status: "created" });
     expect(shared.developmentEvent.create.mock.calls[1]?.[0].data.supersedesEventId)
       .toBe("event-1");
-    expect(shared.developmentEvent.update).toHaveBeenCalledWith({
-      where: { id: "event-1" },
+    expect(shared.developmentEvent.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ["event-1"] }, status: "active" },
       data: { status: "superseded" },
     });
   });
@@ -429,7 +682,7 @@ describe("DevelopmentEventInterpreterService", () => {
     );
     await secondService.interpret({ groupKey, grouping: groupingRequest });
 
-    expect(shared.developmentEvent.update.mock.calls[0]?.[0].data)
+    expect(shared.developmentEvent.updateMany.mock.calls[0]?.[0].data)
       .toEqual({ status: "superseded" });
   });
 
@@ -498,7 +751,7 @@ describe("DevelopmentEventInterpreterService", () => {
 
   it.each([
     ["transient", new AIProviderError("AI_PROVIDER_TRANSIENT_FAILURE", true), true],
-    ["configuration", new AIProviderError("AI_CONFIGURATION_FAILURE", false), false],
+    ["request invalid", new AIProviderError("AI_REQUEST_INVALID", false), false],
   ])("maps %s provider failures safely", async (_name, error, retryable) => {
     const { aIExecution, developmentEvent, logger, service } = harness({
       outputs: [error],

@@ -47,6 +47,13 @@ export interface IntelligenceProcessingVersions {
   readonly projectionVersion: string;
 }
 
+interface EligibleIntelligenceSource {
+  readonly id: string;
+  readonly projectId: string;
+  readonly windowEnd: Date;
+  readonly windowStart: Date;
+}
+
 function sha256(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
@@ -86,35 +93,50 @@ export class IntelligencePipelineService {
   }
 
   async enqueueEligibleCompletedSync(): Promise<boolean> {
-    const source = await this.prisma.syncRun.findFirst({
-      where: {
-        status: "succeeded",
-        intelligenceRuns: { none: {} },
-        connectedRepository: {
-          project: {
-            intelligenceRuns: {
-              none: {
-                status: {
-                  in: ["queued", "running", "failed_retryable"],
-                },
-              },
-            },
-          },
-        },
-      },
-      orderBy: [{ finishedAt: "asc" }, { id: "asc" }],
-      select: {
-        id: true,
-        windowEnd: true,
-        windowStart: true,
-        connectedRepository: { select: { projectId: true } },
-      },
-    });
+    const sources = await this.prisma.$queryRaw<EligibleIntelligenceSource[]>`
+      WITH latest_succeeded AS (
+        SELECT DISTINCT ON (repository."projectId")
+          sync_run."id",
+          repository."projectId",
+          sync_run."windowStart",
+          sync_run."windowEnd",
+          sync_run."finishedAt"
+        FROM "SyncRun" AS sync_run
+        INNER JOIN "ConnectedRepository" AS repository
+          ON repository."id" = sync_run."connectedRepositoryId"
+        WHERE sync_run."status" = 'succeeded'
+        ORDER BY
+          repository."projectId",
+          sync_run."finishedAt" DESC NULLS LAST,
+          sync_run."id" DESC
+      )
+      SELECT
+        source."id",
+        source."projectId",
+        source."windowStart",
+        source."windowEnd"
+      FROM latest_succeeded AS source
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM "IntelligenceRun" AS current_version
+        WHERE current_version."sourceSyncRunId" = source."id"
+          AND current_version."processingVersion" = ${this.versions.processingVersion}
+      )
+        AND NOT EXISTS (
+          SELECT 1
+          FROM "IntelligenceRun" AS active
+          WHERE active."projectId" = source."projectId"
+            AND active."status" IN ('queued', 'running', 'failed_retryable')
+        )
+      ORDER BY source."finishedAt" ASC NULLS LAST, source."id" ASC
+      LIMIT 1
+    `;
+    const source = sources[0];
     if (!source) return false;
 
     try {
       const run = await this.createRun(
-        source.connectedRepository.projectId,
+        source.projectId,
         source.id,
         source.windowStart,
         source.windowEnd,
@@ -123,7 +145,7 @@ export class IntelligencePipelineService {
       this.logger.info("intelligence_run_queued", {
         intelligenceRunId: run.id,
         processingVersion: this.versions.processingVersion,
-        projectId: source.connectedRepository.projectId,
+        projectId: source.projectId,
         sourceSyncRunId: source.id,
       });
       return true;
@@ -134,6 +156,29 @@ export class IntelligencePipelineService {
         true
       );
     }
+  }
+
+  async terminalizeStaleActiveRuns(): Promise<number> {
+    const now = this.clock();
+    return this.prisma.$executeRaw`
+      UPDATE "IntelligenceRun"
+      SET
+        "status" = 'failed_terminal',
+        "finishedAt" = ${now},
+        "failureCode" = 'INTELLIGENCE_VERSION_STALE',
+        "retryAfterAt" = NULL,
+        "leaseToken" = NULL,
+        "leaseExpiresAt" = NULL,
+        "updatedAt" = ${now}
+      WHERE "processingVersion" <> ${this.versions.processingVersion}
+        AND (
+          "status" IN ('queued', 'failed_retryable')
+          OR (
+            "status" = 'running'
+            AND "leaseExpiresAt" <= ${now}
+          )
+        )
+    `;
   }
 
   async enqueueReprocessing(
@@ -229,7 +274,10 @@ export class IntelligencePipelineService {
           groupKey: group.groupKey,
           grouping: groupingRequest,
         });
-        if (result.status === "insufficient_evidence") {
+        if (
+          result.status === "insufficient_evidence" ||
+          result.eventStatus === "rejected"
+        ) {
           groupsRejected += 1;
         } else {
           groupsSucceeded += 1;
