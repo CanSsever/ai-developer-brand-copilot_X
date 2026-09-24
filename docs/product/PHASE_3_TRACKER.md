@@ -79,7 +79,14 @@ The reviewed task breakdown is adopted as follows:
 
 ## Task 3.4 — Structured Opportunity Detection
 
-- [ ] NOT STARTED
+- [x] bounded strict detector contract validates opportunity type, title, recommended format, topic descriptor, confidence, deterministic candidate order, and event provenance; a successful zero-candidate result is valid
+- [x] detector input is projected from the canonical Task 3.3 selection and excludes raw GitHub/code evidence, daily summaries, opportunity history, and non-event IDs as provenance
+- [x] configured backend adapter uses strict structured output, bounded/sanitized semantic input, timeout, and `store: false`; one repair is limited to provider-successful invalid output
+- [x] dedicated `opportunity_detection` AIExecution stage and separate result/candidate/event-provenance persistence are atomic; zero-candidate results persist explicitly
+- [x] reuse requires a matching successful/valid owner-scoped execution plus a complete validated result and all current input/prompt/schema/detector/model-configuration identity fields; incomplete matches fail closed
+- [x] persistence constraints, same-Project provenance enforcement, owner-scoped read-only RLS, and append-only detector semantics verified; no ContentOpportunity decision is written
+- [x] focused detector/persistence tests and full lint, typecheck, test, build, secret scan, Prisma, database connectivity, migration-status, and diff checks pass
+- [x] Task 3.4 VERIFIED COMPLETE — see [Phase 3 structured opportunity detection](./PHASE_3_OPPORTUNITY_DETECTION.md)
 
 ## Task 3.5 — Novelty, Duplicate Suppression, Ranking & Persistence
 

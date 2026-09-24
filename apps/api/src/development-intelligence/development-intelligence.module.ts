@@ -7,9 +7,11 @@ import {
   DEVELOPMENT_EVENT_MODEL_CLIENT,
   OPENAI_INTERPRETATION_CONFIG,
   OPENAI_INTERPRETATION_FETCH,
+  OPPORTUNITY_DETECTION_MODEL_CLIENT,
   type OpenAIInterpretationConfig,
 } from "./development-intelligence.tokens";
 import { OpenAIDevelopmentEventModelService } from "./openai-development-event-model.service";
+import { OpenAIOpportunityDetectionModelService } from "./openai-opportunity-detection-model.service";
 import { ProjectStateProjectorService } from "./project-state-projector.service";
 import {
   defaultIntelligencePipelineWorkerOptions,
@@ -27,6 +29,7 @@ import {
   DailyDevelopmentSummaryService,
 } from "./daily-development-summary.service";
 import { Phase3OpportunityInputSelectorService } from "./phase3-opportunity-input-selector.service";
+import { OpportunityDetectionService } from "./opportunity-detection.service";
 
 @Module({})
 export class DevelopmentIntelligenceModule {
@@ -44,6 +47,7 @@ export class DevelopmentIntelligenceModule {
         IntelligenceReadService,
         DailyDevelopmentSummaryService,
         Phase3OpportunityInputSelectorService,
+        OpportunityDetectionService,
         { provide: DAILY_SUMMARY_CLOCK, useValue: () => new Date() },
         { provide: INTELLIGENCE_PIPELINE_CLOCK, useValue: () => new Date() },
         {
@@ -53,9 +57,14 @@ export class DevelopmentIntelligenceModule {
         { provide: OPENAI_INTERPRETATION_CONFIG, useValue: config },
         { provide: OPENAI_INTERPRETATION_FETCH, useValue: fetch },
         OpenAIDevelopmentEventModelService,
+        OpenAIOpportunityDetectionModelService,
         {
           provide: DEVELOPMENT_EVENT_MODEL_CLIENT,
           useExisting: OpenAIDevelopmentEventModelService,
+        },
+        {
+          provide: OPPORTUNITY_DETECTION_MODEL_CLIENT,
+          useExisting: OpenAIOpportunityDetectionModelService,
         },
       ],
       exports: [
@@ -64,6 +73,7 @@ export class DevelopmentIntelligenceModule {
         ProjectStateProjectorService,
         IntelligencePipelineService,
         IntelligencePipelineWorkerService,
+        OpportunityDetectionService,
       ],
     };
   }

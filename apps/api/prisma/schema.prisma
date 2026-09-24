@@ -32,6 +32,7 @@ model Project {
   intelligenceRuns         IntelligenceRun[]
   dailyDevelopmentSummaries DailyDevelopmentSummary[]
   contentOpportunities     ContentOpportunity[]
+  opportunityDetectionResults OpportunityDetectionResult[]
 
   @@index([userId])
 }
@@ -310,6 +311,7 @@ enum DevelopmentEventEvidenceRole {
 
 enum AIExecutionStage {
   development_event_interpretation
+  opportunity_detection
 }
 
 enum AIExecutionStatus {
@@ -354,6 +356,7 @@ model DevelopmentEvent {
   dailyDevelopmentSummaries DailyDevelopmentSummaryEvent[]
   contentOpportunityLinks  ContentOpportunityDevelopmentEvent[]
   opportunityReasonSignalLinks ContentOpportunityReasonSignalEvent[]
+  opportunityDetectionCandidateLinks OpportunityDetectionCandidateDevelopmentEvent[]
 
   @@unique([projectId, eventKey, extractionVersion, inputFingerprint])
   @@index([projectId, occurredAt])
@@ -375,6 +378,7 @@ model AIExecution {
   schemaVersion                 String             @db.VarChar(64)
   extractionVersion             String?            @db.VarChar(64)
   attemptNumber                 Int
+  isRepairAttempt               Boolean            @default(false)
   validationStatus              AIValidationStatus @default(pending)
   failureCode                   String?            @db.VarChar(64)
   startedAt                     DateTime           @db.Timestamptz(3)
@@ -386,6 +390,7 @@ model AIExecution {
   updatedAt                     DateTime           @default(now()) @updatedAt @db.Timestamptz(3)
   project                       Project            @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   developmentEvent              DevelopmentEvent?  @relation(fields: [developmentEventId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  opportunityDetectionResult    OpportunityDetectionResult?
 
   @@unique([projectId, stage, inputFingerprint, promptVersion, modelConfigurationFingerprint, attemptNumber])
   @@index([projectId, stage, inputFingerprint, extractionVersion])
@@ -603,6 +608,49 @@ model ContentOpportunity {
   @@index([projectId, status, priorityScore])
   @@index([projectId, topicKey, createdAt])
   @@index([projectId, createdAt])
+}
+
+model OpportunityDetectionResult {
+  id               String                           @id @default(uuid()) @db.Uuid
+  aiExecutionId    String                           @unique @db.Uuid
+  projectId        String                           @db.Uuid
+  inputFingerprint String                           @db.VarChar(64)
+  candidateCount   Int
+  createdAt        DateTime                         @default(now()) @db.Timestamptz(3)
+  aiExecution      AIExecution                     @relation(fields: [aiExecutionId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  project          Project                         @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  candidates       OpportunityDetectionCandidate[]
+
+  @@index([projectId, inputFingerprint])
+}
+
+model OpportunityDetectionCandidate {
+  id                    String                                            @id @default(uuid()) @db.Uuid
+  resultId              String                                            @db.Uuid
+  position              Int
+  opportunityType       ContentOpportunityType
+  title                 String                                            @db.VarChar(300)
+  recommendedFormat     ContentOpportunityRecommendedFormat
+  topicDescriptor       String                                            @db.VarChar(240)
+  confidence            Float                                             @db.DoublePrecision
+  selectedEventCount    Int
+  result                OpportunityDetectionResult                       @relation(fields: [resultId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvents     OpportunityDetectionCandidateDevelopmentEvent[]
+
+  @@unique([resultId, position])
+}
+
+model OpportunityDetectionCandidateDevelopmentEvent {
+  candidateId        String                          @db.Uuid
+  developmentEventId String                          @db.Uuid
+  position           Int
+  createdAt          DateTime                        @default(now()) @db.Timestamptz(3)
+  candidate          OpportunityDetectionCandidate  @relation(fields: [candidateId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvent   DevelopmentEvent               @relation(fields: [developmentEventId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@id([candidateId, developmentEventId])
+  @@unique([candidateId, position])
+  @@index([developmentEventId])
 }
 
 model ContentOpportunityDevelopmentEvent {

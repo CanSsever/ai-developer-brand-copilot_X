@@ -65,7 +65,7 @@ function retryAfterAt(response: Response): Date | null {
     : null;
 }
 
-function redactSensitiveValue(value: string): string {
+export function redactSensitiveValue(value: string): string {
   return value
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, "[REDACTED_PRIVATE_KEY]")
     .replace(/\b(?:Bearer\s+|Authorization\s*:\s*(?:Bearer\s+)?)[A-Za-z0-9._~+/=-]{12,}/gi, "[REDACTED_AUTHORIZATION]")

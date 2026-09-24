@@ -53,6 +53,22 @@ export type {
 export const developmentEventPromptVersion = "development-event-prompt-v2";
 export const developmentEventSchemaVersion = "development-event-schema-v2";
 
+export {
+  opportunityDetectionBounds,
+  opportunityDetectionInstructions,
+  opportunityDetectionPromptVersion,
+  opportunityDetectionSchema,
+  opportunityDetectionSchemaVersion,
+  opportunityDetectionValidationVersion,
+  parseOpportunityDetectionResult,
+} from "./phase3-opportunity-detection.js";
+export type {
+  OpportunityDetectionModelClient,
+  OpportunityDetectionModelResult,
+  OpportunityDetectionPromptInput,
+} from "./phase3-opportunity-detection.js";
+export type { DetectedOpportunityCandidate } from "@developer-brand-copilot/contracts";
+
 export interface ActiveFeatureContext {
   readonly id: string;
   readonly summary: string;

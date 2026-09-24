@@ -9,6 +9,16 @@ export const contentOpportunityTypes = [
 
 export type ContentOpportunityType = (typeof contentOpportunityTypes)[number];
 
+/** Validated Task 3.4 semantics; deliberately excludes Task 3.5 decisions. */
+export interface DetectedOpportunityCandidate {
+  readonly eventIds: readonly string[];
+  readonly opportunityType: ContentOpportunityType;
+  readonly title: string;
+  readonly recommendedFormat: ContentOpportunityRecommendedFormat;
+  readonly topicDescriptor: string;
+  readonly confidence: number;
+}
+
 export const contentOpportunityRecommendedFormats = [
   "short_update",
   "visual_progress",
