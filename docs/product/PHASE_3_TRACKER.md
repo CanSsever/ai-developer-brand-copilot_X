@@ -69,7 +69,13 @@ The reviewed task breakdown is adopted as follows:
 
 ## Task 3.3 — Authoritative Opportunity Input Selection
 
-- [ ] NOT STARTED
+- [x] shared, semantics-preserving Phase 2 authoritative DevelopmentEvent predicate used by ProjectState, daily-summary, intelligence-read, and Phase 3 selection
+- [x] owner-scoped deterministic selector with the Phase 3-only confidence `>= 0.60` defense-in-depth rule
+- [x] bounded canonical DevelopmentEvent and current ProjectState semantic context; DailyDevelopmentSummary is not an input
+- [x] same-Project recommended/suppressed/expired history over the preceding 30 Project developer-days with explicit timezone boundary
+- [x] deterministic ordering, documented engineering bounds/truncation, versioned canonical SHA-256 input fingerprint
+- [x] focused authority/privacy/bounds/timezone/fingerprint tests; full quality and database verification pass; no schema or migration change
+- [x] Task 3.3 VERIFIED COMPLETE — see [Phase 3 opportunity input selection](./PHASE_3_OPPORTUNITY_INPUT.md)
 
 ## Task 3.4 — Structured Opportunity Detection
 

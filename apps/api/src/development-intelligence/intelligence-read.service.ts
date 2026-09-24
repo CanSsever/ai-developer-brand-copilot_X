@@ -10,6 +10,7 @@ import { developmentEventTypes } from "@developer-brand-copilot/contracts";
 
 import { PrismaService } from "../database/prisma.service";
 import { StructuredLogger } from "../observability/structured-logger";
+import { authoritativeDevelopmentEventWhere } from "./authoritative-development-event-where";
 
 export const intelligenceEventLimit = 20;
 
@@ -115,27 +116,7 @@ export class IntelligenceReadService {
         },
         developmentEvents: {
           where: {
-            status: "active",
-            OR: [
-              {
-                commitEvidence: {
-                  some: {
-                    detachedAt: null,
-                    role: "supporting",
-                    gitHubCommit: { orphanedAt: null },
-                  },
-                },
-              },
-              {
-                pullRequestEvidence: {
-                  some: {
-                    detachedAt: null,
-                    role: "supporting",
-                    gitHubPullRequestId: { not: null },
-                  },
-                },
-              },
-            ],
+            ...authoritativeDevelopmentEventWhere(projectId),
           },
           orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
           take: intelligenceEventLimit,

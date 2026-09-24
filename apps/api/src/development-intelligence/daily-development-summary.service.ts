@@ -4,6 +4,7 @@ import type { DailyDevelopmentSummaryItem, DailyDevelopmentSummaryResponse, Dail
 import { PrismaService } from "../database/prisma.service";
 import { StructuredLogger } from "../observability/structured-logger";
 import { developerDayWindow } from "./developer-day";
+import { authoritativeDevelopmentEventWhere } from "./authoritative-development-event-where";
 
 export const dailySummaryGenerationVersion = "daily-development-summary-v1";
 export const dailySummaryItemLimit = 10;
@@ -55,11 +56,8 @@ export class DailyDevelopmentSummaryService {
         } } },
         developmentEvents: {
           where: {
-            occurredAt: { gte: day.start, lt: day.end }, status: "active",
-            OR: [
-              { commitEvidence: { some: { detachedAt: null, role: "supporting", gitHubCommit: { orphanedAt: null } } } },
-              { pullRequestEvidence: { some: { detachedAt: null, role: "supporting", gitHubPullRequestId: { not: null } } } },
-            ],
+            occurredAt: { gte: day.start, lt: day.end },
+            ...authoritativeDevelopmentEventWhere(projectId),
           },
           orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
           select: {

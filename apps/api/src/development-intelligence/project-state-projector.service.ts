@@ -5,6 +5,7 @@ import { Prisma } from "../generated/prisma/client";
 
 import { PrismaService } from "../database/prisma.service";
 import { StructuredLogger } from "../observability/structured-logger";
+import { authoritativeDevelopmentEventWhere } from "./authoritative-development-event-where";
 
 export const projectStateProjectionVersion = "project-state-projection-v2";
 
@@ -203,30 +204,7 @@ export class ProjectStateProjectorService {
           }
 
           const events = await transaction.developmentEvent.findMany({
-            where: {
-              projectId: project.id,
-              status: "active",
-              OR: [
-                {
-                  commitEvidence: {
-                    some: {
-                      detachedAt: null,
-                      role: "supporting",
-                      gitHubCommit: { orphanedAt: null },
-                    },
-                  },
-                },
-                {
-                  pullRequestEvidence: {
-                    some: {
-                      detachedAt: null,
-                      role: "supporting",
-                      gitHubPullRequestId: { not: null },
-                    },
-                  },
-                },
-              ],
-            },
+            where: authoritativeDevelopmentEventWhere(project.id),
             orderBy: [{ occurredAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
             select: {
               confidence: true,

@@ -26,6 +26,7 @@ import {
   DAILY_SUMMARY_CLOCK,
   DailyDevelopmentSummaryService,
 } from "./daily-development-summary.service";
+import { Phase3OpportunityInputSelectorService } from "./phase3-opportunity-input-selector.service";
 
 @Module({})
 export class DevelopmentIntelligenceModule {
@@ -42,6 +43,7 @@ export class DevelopmentIntelligenceModule {
         IntelligencePipelineWorkerService,
         IntelligenceReadService,
         DailyDevelopmentSummaryService,
+        Phase3OpportunityInputSelectorService,
         { provide: DAILY_SUMMARY_CLOCK, useValue: () => new Date() },
         { provide: INTELLIGENCE_PIPELINE_CLOCK, useValue: () => new Date() },
         {
