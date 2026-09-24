@@ -15,6 +15,41 @@ export type {
   Phase2EvaluationScenario,
 } from "./phase2-evaluation.js";
 
+export {
+  getPhase3DevelopmentScenarios,
+  getPhase3FullCorpusForAudit,
+  getPhase3HeldOutScenarios,
+  getPhase3ScenarioDistribution,
+  fingerprintPhase3Scenarios,
+  phase3OpportunityCorpusVersion,
+  phase3OpportunityDevelopmentScenarioCount,
+  phase3OpportunityExpectedContractVersion,
+  phase3OpportunityFingerprints,
+  phase3OpportunityHeldOutScenarioCount,
+  phase3OpportunityPinnedFingerprints,
+  phase3OpportunityRubricVersion,
+  phase3OpportunityScenarioCount,
+  phase3OpportunityConfidenceThreshold,
+  phase3OpportunityNoveltyThreshold,
+  phase3VisibleOpportunityPrecisionGate,
+  scorePhase3DevelopmentEvaluation,
+  scorePhase3HeldOutEvaluation,
+  validatePhase3OpportunityCorpus,
+} from "./phase3-evaluation.js";
+export type {
+  Phase3EvaluationEvent,
+  Phase3EvaluationExpected,
+  Phase3EvaluationHistoryItem,
+  Phase3EvaluationMetrics,
+  Phase3EvaluationObservation,
+  Phase3EvaluationScenarioInput,
+  Phase3NoveltyExpectation,
+  Phase3OpportunityScenario,
+  Phase3OpportunityStatus,
+  Phase3ScenarioReview,
+  Phase3ScenarioSplit,
+} from "./phase3-evaluation.js";
+
 export const developmentEventPromptVersion = "development-event-prompt-v2";
 export const developmentEventSchemaVersion = "development-event-schema-v2";
 

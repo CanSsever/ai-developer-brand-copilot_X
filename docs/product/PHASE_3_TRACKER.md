@@ -58,7 +58,14 @@ The reviewed task breakdown is adopted as follows:
 
 ## Task 3.2 — Phase 3 Evaluation Corpus & Review Rubric
 
-- [ ] NOT STARTED
+- [x] 100-scenario `phase3-opportunity-v1` corpus with frozen 80/20 development/held-out split
+- [x] Canonical SHA-256 pins for complete corpus, development split, held-out split, expected taxonomy contract, and rubric text
+- [x] synthetic semantic inputs, approved taxonomy labels, and separate positive/negative reason expectations
+- [x] deterministic reviewer rubric, second-review/disagreement/adjudication fields, and fixture correction policy
+- [x] offline deterministic scorer with development-default and explicit held-out entry points
+- [x] automated corpus safety, split, distribution, taxonomy, confidence, novelty, and metric-semantic coverage
+- [x] focused tests and all requested repository quality/security gates pass
+- [x] Task 3.2 VERIFIED COMPLETE — see [Phase 3 evaluation corpus and rubric](./PHASE_3_EVALUATION_CORPUS.md)
 
 ## Task 3.3 — Authoritative Opportunity Input Selection
 
