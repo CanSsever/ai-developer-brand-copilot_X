@@ -31,6 +31,7 @@ model Project {
   projectState             ProjectState?
   intelligenceRuns         IntelligenceRun[]
   dailyDevelopmentSummaries DailyDevelopmentSummary[]
+  contentOpportunities     ContentOpportunity[]
 
   @@index([userId])
 }
@@ -351,6 +352,8 @@ model DevelopmentEvent {
   projectStateVersionLinks ProjectStateVersionEvent[]
   aiExecutions             AIExecution[]
   dailyDevelopmentSummaries DailyDevelopmentSummaryEvent[]
+  contentOpportunityLinks  ContentOpportunityDevelopmentEvent[]
+  opportunityReasonSignalLinks ContentOpportunityReasonSignalEvent[]
 
   @@unique([projectId, eventKey, extractionVersion, inputFingerprint])
   @@index([projectId, occurredAt])
@@ -527,5 +530,117 @@ model DailyDevelopmentSummaryEvent {
   developmentEvent          DevelopmentEvent        @relation(fields: [developmentEventId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([dailyDevelopmentSummaryId, developmentEventId])
+  @@index([developmentEventId])
+}
+
+enum ContentOpportunityType {
+  progress_update
+  feature_showcase
+  technical_insight
+  problem_solution
+  milestone
+  release
+}
+
+enum ContentOpportunityRecommendedFormat {
+  short_update
+  visual_progress
+  technical_breakdown
+  milestone_update
+  release_announcement
+  multi_point_story
+}
+
+enum ContentOpportunityStatus {
+  recommended
+  suppressed
+  expired
+}
+
+enum ContentOpportunityReasonCode {
+  high_importance
+  high_content_potential
+  fresh_work
+  novel_topic
+  feature_completed
+  release_or_milestone
+  multi_event_story
+  duplicate_topic
+  repetition_penalty
+  low_novelty
+  low_confidence
+}
+
+enum ContentOpportunityReasonEffect {
+  positive
+  negative
+}
+
+model ContentOpportunity {
+  id                String                               @id @default(uuid()) @db.Uuid
+  projectId         String                               @db.Uuid
+  candidateKey      String                               @db.VarChar(64)
+  inputFingerprint  String                               @db.VarChar(64)
+  opportunityType   ContentOpportunityType
+  topicKey          String                               @db.VarChar(160)
+  title             String
+  recommendedFormat ContentOpportunityRecommendedFormat
+  priorityScore     Decimal                              @db.Decimal(4, 3)
+  noveltyScore      Decimal                              @db.Decimal(4, 3)
+  shouldPost        Boolean
+  confidence        Decimal                              @db.Decimal(4, 3)
+  status            ContentOpportunityStatus
+  scoringVersion    String                               @db.VarChar(64)
+  isCurrent         Boolean                              @default(true)
+  expiredAt         DateTime?                            @db.Timestamptz(3)
+  createdAt         DateTime                             @default(now()) @db.Timestamptz(3)
+  updatedAt         DateTime                             @default(now()) @updatedAt @db.Timestamptz(3)
+  project           Project                              @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvents ContentOpportunityDevelopmentEvent[]
+  reasonSignals     ContentOpportunityReasonSignal[]
+
+  @@unique([projectId, candidateKey, inputFingerprint, scoringVersion])
+  @@index([projectId, status, priorityScore])
+  @@index([projectId, topicKey, createdAt])
+  @@index([projectId, createdAt])
+}
+
+model ContentOpportunityDevelopmentEvent {
+  id                   String             @id @default(uuid()) @db.Uuid
+  contentOpportunityId String             @db.Uuid
+  developmentEventId   String             @db.Uuid
+  createdAt            DateTime           @default(now()) @db.Timestamptz(3)
+  contentOpportunity   ContentOpportunity @relation(fields: [contentOpportunityId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvent     DevelopmentEvent   @relation(fields: [developmentEventId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([contentOpportunityId, developmentEventId])
+  @@index([developmentEventId])
+}
+
+model ContentOpportunityReasonSignal {
+  id                   String                                @id @default(uuid()) @db.Uuid
+  contentOpportunityId String                                @db.Uuid
+  code                 ContentOpportunityReasonCode
+  effect               ContentOpportunityReasonEffect
+  value                Decimal?                              @db.Decimal(4, 3)
+  position             Int
+  createdAt            DateTime                              @default(now()) @db.Timestamptz(3)
+  contentOpportunity   ContentOpportunity                    @relation(fields: [contentOpportunityId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvents    ContentOpportunityReasonSignalEvent[]
+
+  @@unique([contentOpportunityId, code])
+  @@unique([contentOpportunityId, position])
+  @@index([contentOpportunityId, effect])
+}
+
+model ContentOpportunityReasonSignalEvent {
+  id                 String                         @id @default(uuid()) @db.Uuid
+  reasonSignalId     String                         @db.Uuid
+  developmentEventId String                         @db.Uuid
+  createdAt          DateTime                       @default(now()) @db.Timestamptz(3)
+  reasonSignal       ContentOpportunityReasonSignal @relation(fields: [reasonSignalId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  developmentEvent   DevelopmentEvent               @relation(fields: [developmentEventId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([reasonSignalId, developmentEventId])
   @@index([developmentEventId])
 }
