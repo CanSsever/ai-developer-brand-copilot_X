@@ -90,7 +90,15 @@ The reviewed task breakdown is adopted as follows:
 
 ## Task 3.5 — Novelty, Duplicate Suppression, Ranking & Persistence
 
-- [ ] NOT STARTED
+- [x] versioned Unicode topic normalization and title/order-independent candidate identity
+- [x] deterministic, timezone-aware novelty, duplicate, repetition, confidence, freshness, and priority policies; stable reason-signal taxonomy/order/provenance
+- [x] owner-scoped Task 3.3 revalidation and complete successful/valid Task 3.4 result identity/provenance checks; incomplete or stale inputs fail closed
+- [x] atomic ContentOpportunity parent/provenance/reason persistence, exact semantic reuse validation, current-row expiry, serialization, and explicit zero-candidate behavior
+- [x] no schema gap or migration; existing Task 3.1 uniqueness, lifecycle, provenance, constraints, and RLS are reused
+- [x] focused scoring/persistence tests and Task 3.4 regressions pass; no live provider calls, GitHub sync, new API/read model/UI, feedback, or Phase 4 work
+- [x] DEV-only scorer evaluation passes visible-precision gate: 0.8958 against 0.75; corpus pins unchanged; metrics and PDR/corpus limitations documented
+- [x] full lint, typecheck, test, build, secret scan, Prisma validation, migration-status, database connectivity, and diff checks pass
+- [x] Task 3.5 VERIFIED COMPLETE LOCALLY — see [Phase 3 opportunity scoring](./PHASE_3_OPPORTUNITY_SCORING.md); not committed or pushed
 
 ## Task 3.6 — Opportunity Run Orchestration & Reprocessing
 
