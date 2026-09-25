@@ -12,16 +12,20 @@ export interface PersistScoredOpportunitiesRequest {
  readonly task34:{readonly extractionVersion:string;readonly detectorVersion:string;readonly modelConfigurationFingerprint:string;readonly promptVersion:string;readonly schemaVersion:string};
 }
 export interface PersistScoredOpportunitiesResult { readonly decisions:readonly OpportunityDecision[]; readonly reusedOpportunityIds:readonly string[]; readonly createdOpportunityIds:readonly string[]; }
+export type ContentOpportunityScoringFailureCode = "OPPORTUNITY_INPUT_STALE" | "OPPORTUNITY_DETECTION_RESULT_INVALID" | "OPPORTUNITY_SCORING_INVARIANT_FAILED";
+export class ContentOpportunityScoringError extends Error {
+ constructor(readonly failureCode:ContentOpportunityScoringFailureCode,message:string,cause?:unknown){super(message,{cause});this.name="ContentOpportunityScoringError";}
+}
 @Injectable()
 export class ContentOpportunityScoringService {
  constructor(private readonly prisma:PrismaService,private readonly inputSelector:Phase3OpportunityInputSelectorService){}
  async scoreAndPersist(request:PersistScoredOpportunitiesRequest):Promise<PersistScoredOpportunitiesResult>{
-  if(request.projectId!==request.input.projectId||fingerprintPhase3OpportunityInput(request.input)!==request.task33InputFingerprint)throw new Error("Stale or mismatched Task 3.3 input");
+  if(request.projectId!==request.input.projectId||fingerprintPhase3OpportunityInput(request.input)!==request.task33InputFingerprint)throw new ContentOpportunityScoringError("OPPORTUNITY_INPUT_STALE","Stale or mismatched Task 3.3 input");
   const current=await this.inputSelector.select(request.userId,request.projectId,new Date(request.input.evaluationBoundary));
-  if(current.inputFingerprint!==request.task33InputFingerprint)throw new Error("Task 3.3 input is no longer current");
+  if(current.inputFingerprint!==request.task33InputFingerprint)throw new ContentOpportunityScoringError("OPPORTUNITY_INPUT_STALE","Task 3.3 input is no longer current");
   return this.prisma.$transaction(async tx=>{
    const project=await tx.project.findFirst({where:{id:request.projectId,userId:request.userId},select:{id:true,timezone:true}});
-   if(!project)throw new NotFoundException("Project not found");if(project.timezone!==request.input.timezone)throw new Error("Stale project timezone");
+   if(!project)throw new NotFoundException("Project not found");if(project.timezone!==request.input.timezone)throw new ContentOpportunityScoringError("OPPORTUNITY_INPUT_STALE","Stale project timezone");
    await tx.$queryRawUnsafe('SELECT "id" FROM "Project" WHERE "id" = $1::uuid FOR UPDATE',request.projectId);
    const execution=await tx.aIExecution.findFirst({
     where:{
@@ -34,18 +38,20 @@ export class ContentOpportunityScoringService {
     }}}},
    });
    const result=execution?.opportunityDetectionResult;
-   if(!execution||!result||result.projectId!==request.projectId||result.inputFingerprint!==request.task33InputFingerprint||result.candidateCount!==result.candidates.length||result.candidateCount<0)throw new Error("Validated Task 3.4 result missing or incomplete");
+   if(!execution||!result||result.projectId!==request.projectId||result.inputFingerprint!==request.task33InputFingerprint||result.candidateCount!==result.candidates.length||result.candidateCount<0)throw new ContentOpportunityScoringError("OPPORTUNITY_DETECTION_RESULT_INVALID","Validated Task 3.4 result missing or incomplete");
    const supplied=new Set(request.input.developmentEvents.map(e=>e.developmentEventId)),candidates:DetectedOpportunityCandidate[]=[];
    for(let i=0;i<result.candidates.length;i++){
-    const row=result.candidates[i]!;if(row.position!==i||row.selectedEventCount!==row.developmentEvents.length||row.selectedEventCount<1)throw new Error("Incomplete persisted detector candidate");
-    const ids:string[]=[];for(let j=0;j<row.developmentEvents.length;j++){const link=row.developmentEvents[j]!;if(link.position!==j||!supplied.has(link.developmentEventId))throw new Error("Detector provenance does not match Task 3.3 input");ids.push(link.developmentEventId);}
+    const row=result.candidates[i]!;if(row.position!==i||row.selectedEventCount!==row.developmentEvents.length||row.selectedEventCount<1)throw new ContentOpportunityScoringError("OPPORTUNITY_DETECTION_RESULT_INVALID","Incomplete persisted detector candidate");
+    const ids:string[]=[];for(let j=0;j<row.developmentEvents.length;j++){const link=row.developmentEvents[j]!;if(link.position!==j||!supplied.has(link.developmentEventId))throw new ContentOpportunityScoringError("OPPORTUNITY_DETECTION_RESULT_INVALID","Detector provenance does not match Task 3.3 input");ids.push(link.developmentEventId);}
     candidates.push({eventIds:ids,opportunityType:row.opportunityType,title:row.title,recommendedFormat:row.recommendedFormat,topicDescriptor:row.topicDescriptor,confidence:row.confidence});
    }
    if(!candidates.length){
     await tx.contentOpportunity.updateMany({where:{projectId:request.projectId,isCurrent:true,scoringVersion:{startsWith:"phase3-opportunity-scoring-"}},data:{isCurrent:false,status:"expired",expiredAt:new Date()}});
     return {decisions:[],reusedOpportunityIds:[],createdOpportunityIds:[]};
    }
-   const decisions=scorePhase3OpportunityCandidates(request.input,candidates,{resultId:result.id,extractionVersion:request.task34.extractionVersion,detectorVersion:request.task34.detectorVersion,modelConfigurationFingerprint:request.task34.modelConfigurationFingerprint},request.task33InputFingerprint);
+   let decisions:readonly OpportunityDecision[];
+   try{decisions=scorePhase3OpportunityCandidates(request.input,candidates,{resultId:result.id,extractionVersion:request.task34.extractionVersion,detectorVersion:request.task34.detectorVersion,modelConfigurationFingerprint:request.task34.modelConfigurationFingerprint},request.task33InputFingerprint);}
+   catch(error){throw new ContentOpportunityScoringError("OPPORTUNITY_SCORING_INVARIANT_FAILED","Task 3.5 scoring invariant failed",error);}
    const createdOpportunityIds:string[]=[],reusedOpportunityIds:string[]=[];
    for(const d of decisions){
     const where={projectId_candidateKey_inputFingerprint_scoringVersion:{projectId:request.projectId,candidateKey:d.candidateKey,inputFingerprint:d.inputFingerprint,scoringVersion:phase3OpportunityScoringVersion}};
@@ -56,7 +62,7 @@ export class ContentOpportunityScoringService {
      if(!old.isCurrent||old.inputFingerprint!==d.inputFingerprint||old.scoringVersion!==d.scoringVersion||old.topicKey!==d.topicKey||old.title!==d.title||
       old.opportunityType!==d.opportunityType||old.recommendedFormat!==d.recommendedFormat||old.shouldPost!==d.shouldPost||old.status!==d.status||
       Number(old.priorityScore.toString())!==d.priorityScore||Number(old.noveltyScore.toString())!==d.noveltyScore||Number(old.confidence.toString())!==d.confidence||
-      ids.join("|")!==[...d.developmentEventIds].sort().join("|")||!reasonsOk)throw new Error("Existing opportunity identity is incomplete or inconsistent");
+      ids.join("|")!==[...d.developmentEventIds].sort().join("|")||!reasonsOk)throw new ContentOpportunityScoringError("OPPORTUNITY_SCORING_INVARIANT_FAILED","Existing opportunity identity is incomplete or inconsistent");
      reusedOpportunityIds.push(old.id);continue;
     }
     await tx.contentOpportunity.updateMany({where:{projectId:request.projectId,candidateKey:d.candidateKey,isCurrent:true},data:{isCurrent:false,status:"expired",expiredAt:new Date()}});

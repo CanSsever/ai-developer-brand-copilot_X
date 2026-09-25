@@ -6,6 +6,7 @@ import { AppModule } from "./app.module";
 import { GitHubModule } from "./github/github.module";
 import { GITHUB_FETCH, GITHUB_SYNC_WORKER_ENABLED } from "./github/github.tokens";
 import { OPENAI_INTERPRETATION_FETCH } from "./development-intelligence/development-intelligence.tokens";
+import { OpportunityRunWorkerService } from "./development-intelligence/opportunity-run-worker.service";
 
 const config: ApiEnv = {
   DATABASE_URL: "postgresql://user:password@localhost:5432/app",
@@ -51,10 +52,12 @@ describe("operational bootstrap", () => {
       .overrideProvider(OPENAI_INTERPRETATION_FETCH)
       .useValue(openAiFetch)
       .compile();
+    const opportunityRunOnce = vi.spyOn(module.get(OpportunityRunWorkerService), "runOnce");
     await module.init();
     try {
       expect(githubFetch).not.toHaveBeenCalled();
       expect(openAiFetch).not.toHaveBeenCalled();
+      expect(opportunityRunOnce).not.toHaveBeenCalled();
     } finally {
       await module.close();
     }

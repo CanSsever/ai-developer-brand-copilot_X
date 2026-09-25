@@ -8,6 +8,7 @@ import {
   type OnModuleInit,
 } from "@nestjs/common";
 import { IntelligencePipelineWorkerService } from "../development-intelligence/intelligence-pipeline-worker.service";
+import { OpportunityRunWorkerService } from "../development-intelligence/opportunity-run-worker.service";
 
 import { PrismaService } from "../database/prisma.service";
 import { StructuredLogger } from "../observability/structured-logger";
@@ -69,7 +70,9 @@ export class GitHubSyncWorkerService
     @Inject(GITHUB_SYNC_WORKER_ENABLED)
     private readonly enabled: boolean,
     @Optional()
-    private readonly intelligenceWorker?: IntelligencePipelineWorkerService
+    private readonly intelligenceWorker?: IntelligencePipelineWorkerService,
+    @Optional()
+    private readonly opportunityWorker?: OpportunityRunWorkerService
   ) {}
 
   onModuleInit(): void {
@@ -167,7 +170,15 @@ export class GitHubSyncWorkerService
     }
     const intelligenceProcessed =
       (await this.intelligenceWorker?.runOnce()) ?? false;
-    return Boolean(claimed) || intelligenceProcessed;
+    let opportunityProcessed = false;
+    try {
+      opportunityProcessed = (await this.opportunityWorker?.runOnce()) ?? false;
+    } catch {
+      this.logger.errorEvent("opportunity_worker_failure", {
+        failureCode: "OPPORTUNITY_INTERNAL_ERROR",
+      });
+    }
+    return Boolean(claimed) || intelligenceProcessed || opportunityProcessed;
   }
 
   private async claimNext(now: Date): Promise<

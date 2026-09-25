@@ -31,6 +31,9 @@ import {
 import { Phase3OpportunityInputSelectorService } from "./phase3-opportunity-input-selector.service";
 import { OpportunityDetectionService } from "./opportunity-detection.service";
 import { ContentOpportunityScoringService } from "./content-opportunity-scoring.service";
+import { OpportunityRunService } from "./opportunity-run.service";
+import { OpportunityRunWorkerService, defaultOpportunityRunWorkerOptions } from "./opportunity-run-worker.service";
+import { OPPORTUNITY_RUN_CLOCK, OPPORTUNITY_RUN_WORKER_OPTIONS } from "./opportunity-run.tokens";
 
 @Module({})
 export class DevelopmentIntelligenceModule {
@@ -50,6 +53,10 @@ export class DevelopmentIntelligenceModule {
         Phase3OpportunityInputSelectorService,
         OpportunityDetectionService,
         ContentOpportunityScoringService,
+        OpportunityRunService,
+        OpportunityRunWorkerService,
+        { provide: OPPORTUNITY_RUN_CLOCK, useValue: () => new Date() },
+        { provide: OPPORTUNITY_RUN_WORKER_OPTIONS, useValue: defaultOpportunityRunWorkerOptions },
         { provide: DAILY_SUMMARY_CLOCK, useValue: () => new Date() },
         { provide: INTELLIGENCE_PIPELINE_CLOCK, useValue: () => new Date() },
         {
@@ -77,6 +84,8 @@ export class DevelopmentIntelligenceModule {
         IntelligencePipelineWorkerService,
         OpportunityDetectionService,
         ContentOpportunityScoringService,
+        OpportunityRunService,
+        OpportunityRunWorkerService,
       ],
     };
   }

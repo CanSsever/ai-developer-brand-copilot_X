@@ -102,7 +102,7 @@ The reviewed task breakdown is adopted as follows:
 
 ## Task 3.6 — Opportunity Run Orchestration & Reprocessing
 
-- [ ] NOT STARTED
+- [x] Task 3.6 VERIFIED COMPLETE LOCALLY — durable orchestration, central-loop integration, migration application, database invariants, replay/fencing behavior, and required local verification pass. See [Opportunity run orchestration](./PHASE_3_OPPORTUNITY_RUNS.md); not committed or pushed.
 
 ## Task 3.7 — Opportunity Read Model & Dashboard Cards
 

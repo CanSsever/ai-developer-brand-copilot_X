@@ -42,7 +42,7 @@ const opportunityDetectionModelConfiguration = Object.freeze({
   candidateBounds: opportunityDetectionBounds,
 });
 
-type OpportunityDetectionFailureCode =
+export type OpportunityDetectionFailureCode =
   | "AI_REQUEST_INVALID"
   | "AI_AUTHENTICATION_FAILURE"
   | "AI_AUTHORIZATION_FAILURE"
@@ -73,6 +73,7 @@ export interface OpportunityDetectionOutcome {
   readonly inputFingerprint: string;
   readonly execution: {
     readonly aiExecutionId: string;
+    readonly opportunityDetectionResultId: string;
     readonly model: string;
     readonly modelConfigurationFingerprint: string;
     readonly promptVersion: string;
@@ -83,6 +84,16 @@ export interface OpportunityDetectionOutcome {
     readonly initialAttemptCount: number;
     readonly repairAttemptCount: number;
   };
+}
+
+export interface OpportunityDetectionProcessingIdentity {
+  readonly detectorVersion: string;
+  readonly extractionVersion: string;
+  readonly inputSelectionVersion: string;
+  readonly modelConfigurationFingerprint: string;
+  readonly promptVersion: string;
+  readonly schemaVersion: string;
+  readonly validationVersion: string;
 }
 
 interface StartedAttempt {
@@ -102,6 +113,7 @@ interface ReusableExecution {
   readonly schemaVersion: string;
   readonly extractionVersion: string | null;
   readonly opportunityDetectionResult: null | {
+    readonly id: string;
     readonly projectId: string;
     readonly inputFingerprint: string;
     readonly candidateCount: number;
@@ -207,6 +219,18 @@ export class OpportunityDetectionService {
     });
   }
 
+  getProcessingIdentity(): OpportunityDetectionProcessingIdentity {
+    return {
+      detectorVersion: opportunityDetectionVersion,
+      extractionVersion: this.extractionVersion,
+      inputSelectionVersion: phase3OpportunityInputSelectionVersion,
+      modelConfigurationFingerprint: this.modelConfigurationFingerprint,
+      promptVersion: opportunityDetectionPromptVersion,
+      schemaVersion: opportunityDetectionSchemaVersion,
+      validationVersion: opportunityDetectionValidationVersion,
+    };
+  }
+
   async detect(
     userId: string,
     projectId: string,
@@ -231,7 +255,7 @@ export class OpportunityDetectionService {
     }
 
     const reusable = await this.findReusableExecution(userId, projectId, input.timezone, inputFingerprint, suppliedEventIds);
-    if (reusable) return this.outcome(reusable.candidates, inputFingerprint, reusable.execution, true);
+    if (reusable) return this.outcome(reusable.candidates, inputFingerprint, reusable.execution, reusable.resultId, true);
 
     let repairErrors: readonly string[] = [];
     for (let providerAttempt = 0; providerAttempt < 2; providerAttempt += 1) {
@@ -250,7 +274,8 @@ export class OpportunityDetectionService {
       const parsed = parseOpportunityDetectionResult(response.outputText, suppliedEventIds);
       if (parsed.value !== null) {
         try {
-          await this.persistSuccessfulResult(started, projectId, inputFingerprint, parsed.value, response);
+          const resultId = await this.persistSuccessfulResult(started, projectId, inputFingerprint, parsed.value, response);
+          return this.outcome(parsed.value, inputFingerprint, started, resultId, false, providerAttempt === 1 ? 1 : 0);
         } catch {
           await this.failPersistence(started);
           try {
@@ -262,14 +287,13 @@ export class OpportunityDetectionService {
               suppliedEventIds
             );
             if (canonical) {
-              return this.outcome(canonical.candidates, inputFingerprint, canonical.execution, true);
+              return this.outcome(canonical.candidates, inputFingerprint, canonical.execution, canonical.resultId, true);
             }
           } catch {
             // A failed or ambiguous persistence attempt is never returned as a candidate result.
           }
           throw new OpportunityDetectionError("OPPORTUNITY_DETECTION_PERSISTENCE_FAILED");
         }
-        return this.outcome(parsed.value, inputFingerprint, started, false, providerAttempt === 1 ? 1 : 0);
       }
 
       await this.finishInvalidOutput(started, response);
@@ -284,7 +308,7 @@ export class OpportunityDetectionService {
     timezone: string,
     inputFingerprint: string,
     suppliedEventIds: ReadonlySet<string>
-  ): Promise<{ readonly candidates: readonly DetectedOpportunityCandidate[]; readonly execution: StartedAttempt & { readonly isRepairAttempt: boolean } } | null> {
+  ): Promise<{ readonly candidates: readonly DetectedOpportunityCandidate[]; readonly execution: StartedAttempt & { readonly isRepairAttempt: boolean }; readonly resultId: string } | null> {
     return this.prisma.$transaction(async (transaction) => {
       const project = await transaction.project.findFirst({
         where: { id: projectId, userId },
@@ -319,6 +343,7 @@ export class OpportunityDetectionService {
           extractionVersion: true,
           opportunityDetectionResult: {
             select: {
+              id: true,
               projectId: true,
               inputFingerprint: true,
               candidateCount: true,
@@ -351,6 +376,7 @@ export class OpportunityDetectionService {
       return {
         candidates: reusableResults[0]!,
         execution: { id: execution.id, attemptNumber: execution.attemptNumber, startedAt: new Date(0), isRepairAttempt: execution.isRepairAttempt },
+        resultId: execution.opportunityDetectionResult!.id,
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
   }
@@ -448,9 +474,9 @@ export class OpportunityDetectionService {
     inputFingerprint: string,
     candidates: readonly DetectedOpportunityCandidate[],
     response: { readonly inputTokens: number | null; readonly outputTokens: number | null }
-  ): Promise<void> {
+  ): Promise<string> {
     const completedAt = new Date();
-    await this.prisma.$transaction(async (transaction) => {
+    return await this.prisma.$transaction(async (transaction) => {
       await transaction.aIExecution.update({
         where: { id: started.id },
         data: {
@@ -462,7 +488,7 @@ export class OpportunityDetectionService {
           validationStatus: "valid",
         },
       });
-      await transaction.opportunityDetectionResult.create({
+      const result = await transaction.opportunityDetectionResult.create({
         data: {
           aiExecutionId: started.id,
           projectId,
@@ -486,7 +512,9 @@ export class OpportunityDetectionService {
             })),
           },
         },
+        select: { id: true },
       });
+      return result.id;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
@@ -507,6 +535,7 @@ export class OpportunityDetectionService {
     candidates: readonly DetectedOpportunityCandidate[],
     inputFingerprint: string,
     execution: StartedAttempt & { readonly isRepairAttempt?: boolean },
+    opportunityDetectionResultId: string,
     reused: boolean,
     repairAttemptCount = execution.isRepairAttempt ? 1 : 0
   ): OpportunityDetectionOutcome {
@@ -515,6 +544,7 @@ export class OpportunityDetectionService {
       inputFingerprint,
       execution: {
         aiExecutionId: execution.id,
+        opportunityDetectionResultId,
         model: this.modelConfig.model,
         modelConfigurationFingerprint: this.modelConfigurationFingerprint,
         promptVersion: opportunityDetectionPromptVersion,

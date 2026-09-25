@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PrismaService } from "../database/prisma.service";
 import type { StructuredLogger } from "../observability/structured-logger";
 import type { IntelligencePipelineWorkerService } from "../development-intelligence/intelligence-pipeline-worker.service";
+import type { OpportunityRunWorkerService } from "../development-intelligence/opportunity-run-worker.service";
 import {
   GitHubCommitSyncError,
   type GitHubCommitSyncService,
@@ -70,6 +71,9 @@ function harness(
   const intelligenceWorker = {
     runOnce: vi.fn().mockResolvedValue(false),
   };
+  const opportunityWorker = {
+    runOnce: vi.fn().mockResolvedValue(false),
+  };
   const options = {
     ...defaultGitHubSyncWorkerOptions,
     heartbeatIntervalMs: 60_000,
@@ -83,9 +87,10 @@ function harness(
     () => new Date(now),
     options,
     input.enabled ?? true,
-    intelligenceWorker as unknown as IntelligencePipelineWorkerService
+    intelligenceWorker as unknown as IntelligencePipelineWorkerService,
+    opportunityWorker as unknown as OpportunityRunWorkerService
   );
-  return { intelligenceWorker, logger, options, prisma, sync, worker };
+  return { intelligenceWorker, logger, opportunityWorker, options, prisma, sync, worker };
 }
 
 function rawSql(mock: ReturnType<typeof vi.fn>, callIndex: number): string {
@@ -99,11 +104,12 @@ describe("GitHubSyncWorkerService", () => {
   it("does not schedule a polling tick or invoke provider work when operational bootstrap disables workers", () => {
     vi.useFakeTimers();
     try {
-      const { intelligenceWorker, logger, sync, worker } = harness({ enabled: false });
+      const { intelligenceWorker, logger, opportunityWorker, sync, worker } = harness({ enabled: false });
       worker.onModuleInit();
       expect(logger.info).not.toHaveBeenCalled();
       expect(sync.executeClaimed).not.toHaveBeenCalled();
       expect(intelligenceWorker.runOnce).not.toHaveBeenCalled();
+      expect(opportunityWorker.runOnce).not.toHaveBeenCalled();
       expect(vi.getTimerCount()).toBe(0);
     } finally {
       vi.useRealTimers();
@@ -126,11 +132,57 @@ describe("GitHubSyncWorkerService", () => {
     }
   });
 
+  it("does not start automatic polling under NODE_ENV=test", () => {
+    vi.useFakeTimers();
+    const previousNodeEnv = process.env.NODE_ENV;
+    try {
+      process.env.NODE_ENV = "test";
+      const { intelligenceWorker, opportunityWorker, worker } = harness({ enabled: true });
+      worker.onModuleInit();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(intelligenceWorker.runOnce).not.toHaveBeenCalled();
+      expect(opportunityWorker.runOnce).not.toHaveBeenCalled();
+    } finally {
+      process.env.NODE_ENV = previousNodeEnv;
+      vi.useRealTimers();
+    }
+  });
+
   it("services durable intelligence work through the existing polling tick", async () => {
     const { intelligenceWorker, worker } = harness();
     intelligenceWorker.runOnce.mockResolvedValueOnce(true);
     await expect(worker.runOnce()).resolves.toBe(true);
     expect(intelligenceWorker.runOnce).toHaveBeenCalledOnce();
+  });
+
+  it("runs Phase 2 then Phase 3 on every central tick even without sync work", async () => {
+    const { intelligenceWorker, opportunityWorker, worker } = harness();
+    const order: string[] = [];
+    intelligenceWorker.runOnce.mockImplementation(async () => { order.push("phase2"); return false; });
+    opportunityWorker.runOnce.mockImplementation(async () => { order.push("phase3"); return true; });
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(order).toEqual(["phase2", "phase3"]);
+  });
+
+  it("preserves sync then Phase 2 then Phase 3 order when sync work exists", async () => {
+    const { intelligenceWorker, opportunityWorker, sync, worker } = harness({ claimRows: [claim()] });
+    const order: string[] = [];
+    sync.executeClaimed.mockImplementation(async () => { order.push("sync"); return {} as never; });
+    intelligenceWorker.runOnce.mockImplementation(async () => { order.push("phase2"); return true; });
+    opportunityWorker.runOnce.mockImplementation(async () => { order.push("phase3"); return true; });
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(order).toEqual(["sync", "phase2", "phase3"]);
+  });
+
+  it("isolates unexpected Phase 3 outer failures from completed upstream work", async () => {
+    const { intelligenceWorker, logger, opportunityWorker, worker } = harness({ claimRows: [claim()] });
+    intelligenceWorker.runOnce.mockResolvedValueOnce(true);
+    opportunityWorker.runOnce.mockRejectedValueOnce(new Error(sensitiveMarker));
+    await expect(worker.runOnce()).resolves.toBe(true);
+    expect(logger.errorEvent).toHaveBeenCalledWith("opportunity_worker_failure", {
+      failureCode: "OPPORTUNITY_INTERNAL_ERROR",
+    });
+    expect(JSON.stringify(logger.errorEvent.mock.calls)).not.toContain(sensitiveMarker);
   });
 
   it("atomically claims queued work and invokes the existing sync engine", async () => {

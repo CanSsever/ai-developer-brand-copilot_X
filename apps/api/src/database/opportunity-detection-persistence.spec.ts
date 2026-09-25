@@ -37,7 +37,7 @@ describe("Task 3.4 opportunity detection persistence", () => {
 
   it("stores a result row for both zero-candidate and populated successes", () => {
     expect(modelBlock("OpportunityDetectionResult")).toContain("candidateCount   Int");
-    expect(modelBlock("OpportunityDetectionResult")).toContain("aiExecutionId    String                           @unique");
+    expect(modelBlock("OpportunityDetectionResult")).toMatch(/aiExecutionId\s+String\s+@unique/);
     expect(migration).toContain('CHECK ("candidateCount" BETWEEN 0 AND 12)');
     expect(migration).toContain('UNIQUE ("aiExecutionId")');
   });

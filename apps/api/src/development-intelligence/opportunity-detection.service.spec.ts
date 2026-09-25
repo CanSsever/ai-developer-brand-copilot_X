@@ -83,6 +83,7 @@ function reusable(candidateValue: DetectedOpportunityCandidate | null = candidat
     schemaVersion: opportunityDetectionSchemaVersion,
     extractionVersion: "d".repeat(64),
     opportunityDetectionResult: candidateValue === null ? null : {
+      id: "result-reused",
       projectId,
       inputFingerprint,
       candidateCount: 1,
@@ -104,6 +105,7 @@ function reusable(candidateValue: DetectedOpportunityCandidate | null = candidat
 function reusableZeroCandidates(inputFingerprint: string) {
   return reusable(null, inputFingerprint, {
     opportunityDetectionResult: {
+      id: "result-reused-empty",
       projectId,
       inputFingerprint,
       candidateCount: 0,
@@ -207,7 +209,8 @@ describe("OpportunityDetectionService", () => {
         selectedEventCount: 1,
         developmentEvents: { create: [{ position: 0, developmentEvent: { connect: { id: eventId } } }] },
       })] },
-    }) });
+    }), select: { id: true } });
+    expect(result.execution.opportunityDetectionResultId).toBe("result-created");
     const persistence = JSON.stringify([test.txCreate.mock.calls, test.resultCreate.mock.calls]);
     expect(persistence).not.toContain(raw);
     expect(persistence).not.toContain("outputText");
@@ -220,7 +223,8 @@ describe("OpportunityDetectionService", () => {
     test.detect.mockResolvedValue({ outputText: '{"candidates":[]}', inputTokens: 8, outputTokens: 2 });
     const result = await test.service.detect(userId, projectId, boundary);
     expect(result.candidates).toEqual([]);
-    expect(test.resultCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ candidateCount: 0, candidates: { create: [] } }) });
+    expect(test.resultCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ candidateCount: 0, candidates: { create: [] } }), select: { id: true } });
+    expect(result.execution.opportunityDetectionResultId).toBe("result-created");
   });
 
   it("reuses a persisted zero-candidate result without another provider attempt", async () => {
