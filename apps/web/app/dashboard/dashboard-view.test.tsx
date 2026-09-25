@@ -1,4 +1,5 @@
 import type {
+  ContentOpportunityListResponse,
   GitHubConnectionSummary,
   ProjectSummary,
   RepositorySyncSummary,
@@ -54,6 +55,59 @@ function renderConnected(sync: RepositorySyncSummary) {
 }
 
 describe("DashboardView", () => {
+  it("shows opportunity data only for the selected Project", () => {
+    const response: ContentOpportunityListResponse = {
+      projectId: project.id,
+      items: [{
+        id: "723e4567-e89b-42d3-a456-426614174000", title: "Selected Project opportunity",
+        opportunityType: "progress_update", recommendedFormat: "short_update",
+        priorityScore: 0.8, noveltyScore: 0.9, confidence: 0.9,
+        scoringVersion: "phase3-opportunity-scoring-v1", createdAt: "2026-09-24T10:00:00.000Z",
+        reasonSignals: [],
+        developmentEvents: [{
+          developmentEventId: "823e4567-e89b-42d3-a456-426614174000",
+          type: "feature_completed", title: "Selected Project event", occurredAt: "2026-09-24T09:00:00.000Z",
+        }],
+      }],
+      nextCursor: null, processing: null,
+    };
+    render(
+      <DashboardView
+        connections={[]}
+        createProjectAction={action}
+        loadFailed={false}
+        opportunities={response}
+        projects={[project]}
+        selectedProjectId={project.id}
+        signOutAction={action}
+        syncProjectAction={action}
+      />
+    );
+    expect(screen.getByText("Selected Project opportunity")).toBeInTheDocument();
+  });
+
+  it("fails closed on opportunity data for a different Project while keeping other dashboard panels", () => {
+    const response: ContentOpportunityListResponse = {
+      projectId: "923e4567-e89b-42d3-a456-426614174000",
+      items: [], nextCursor: null, processing: null,
+    };
+    render(
+      <DashboardView
+        connections={[]}
+        createProjectAction={action}
+        loadFailed={false}
+        intelligence={{ currentState: null, eventLimit: 20, events: [], processing: null, projectId: project.id }}
+        opportunities={response}
+        projects={[project]}
+        selectedProjectId={project.id}
+        signOutAction={action}
+        syncProjectAction={action}
+      />
+    );
+    expect(screen.getByRole("heading", { name: "Development intelligence" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Content opportunities could not be loaded.");
+  });
+
   it("renders authenticated navigation, Project creation, and the empty state", () => {
     render(
       <DashboardView

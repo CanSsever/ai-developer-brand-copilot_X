@@ -19,6 +19,15 @@ export {
   positiveContentOpportunityReasonCodes,
 } from "./content-opportunity.js";
 export type {
+  ContentOpportunityCard,
+  ContentOpportunityDevelopmentEventReference,
+  ContentOpportunityListRequest,
+  ContentOpportunityListResponse,
+  ContentOpportunityReasonSignalRead,
+  OpportunityProcessingStatus,
+  OpportunityProcessingSummary,
+} from "./content-opportunity-read.js";
+export type {
   CurrentProjectStateSummary,
   DailyDevelopmentSummaryItem,
   DailyDevelopmentSummaryResponse,

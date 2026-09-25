@@ -98,15 +98,16 @@ The reviewed task breakdown is adopted as follows:
 - [x] focused scoring/persistence tests and Task 3.4 regressions pass; no live provider calls, GitHub sync, new API/read model/UI, feedback, or Phase 4 work
 - [x] DEV-only scorer evaluation passes visible-precision gate: 0.8958 against 0.75; corpus pins unchanged; metrics and PDR/corpus limitations documented
 - [x] full lint, typecheck, test, build, secret scan, Prisma validation, migration-status, database connectivity, and diff checks pass
-- [x] Task 3.5 VERIFIED COMPLETE LOCALLY — see [Phase 3 opportunity scoring](./PHASE_3_OPPORTUNITY_SCORING.md); not committed or pushed
+- [x] Task 3.5 DELIVERY COMPLETE — commit `d68b3e5037a2e8dfc67df370206fbc0d74744f1b` (`feat: add deterministic opportunity scoring`); hosted CI passed.
 
 ## Task 3.6 — Opportunity Run Orchestration & Reprocessing
 
-- [x] Task 3.6 VERIFIED COMPLETE LOCALLY — durable orchestration, central-loop integration, migration application, database invariants, replay/fencing behavior, and required local verification pass. See [Opportunity run orchestration](./PHASE_3_OPPORTUNITY_RUNS.md); not committed or pushed.
+- [x] Task 3.6 DELIVERY COMPLETE — commit `db2bfa74be437b184d3637b210a0886a2bf26514` (`feat: add opportunity run orchestration`); hosted CI passed. See [Opportunity run orchestration](./PHASE_3_OPPORTUNITY_RUNS.md).
 
 ## Task 3.7 — Opportunity Read Model & Dashboard Cards
 
-- [ ] NOT STARTED
+- [x] Task 3.7 VERIFIED COMPLETE LOCALLY — authenticated owner-scoped opportunity read model and explainable dashboard cards; no provider, scoring, enqueue, GitHub, or persistence mutations. See [Opportunity Read Model](./PHASE_3_OPPORTUNITY_READ_MODEL.md).
+- [x] Focused Task 3.7 API/dashboard tests, Task 3.5/3.6 backend regressions, repository quality gates, and database checks pass; Prisma schema unchanged and migration count remains 19. Not committed or pushed.
 
 ## Task 3.8 — Accept/Dismiss Feedback
 

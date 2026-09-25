@@ -34,6 +34,8 @@ import { ContentOpportunityScoringService } from "./content-opportunity-scoring.
 import { OpportunityRunService } from "./opportunity-run.service";
 import { OpportunityRunWorkerService, defaultOpportunityRunWorkerOptions } from "./opportunity-run-worker.service";
 import { OPPORTUNITY_RUN_CLOCK, OPPORTUNITY_RUN_WORKER_OPTIONS } from "./opportunity-run.tokens";
+import { OpportunityReadController } from "./opportunity-read.controller";
+import { OpportunityReadService } from "./opportunity-read.service";
 
 @Module({})
 export class DevelopmentIntelligenceModule {
@@ -41,7 +43,7 @@ export class DevelopmentIntelligenceModule {
     return {
       module: DevelopmentIntelligenceModule,
       global: true,
-      controllers: [IntelligenceReadController],
+      controllers: [IntelligenceReadController, OpportunityReadController],
       providers: [
         EvidenceGroupingService,
         DevelopmentEventInterpreterService,
@@ -55,6 +57,7 @@ export class DevelopmentIntelligenceModule {
         ContentOpportunityScoringService,
         OpportunityRunService,
         OpportunityRunWorkerService,
+        OpportunityReadService,
         { provide: OPPORTUNITY_RUN_CLOCK, useValue: () => new Date() },
         { provide: OPPORTUNITY_RUN_WORKER_OPTIONS, useValue: defaultOpportunityRunWorkerOptions },
         { provide: DAILY_SUMMARY_CLOCK, useValue: () => new Date() },
@@ -86,6 +89,7 @@ export class DevelopmentIntelligenceModule {
         ContentOpportunityScoringService,
         OpportunityRunService,
         OpportunityRunWorkerService,
+        OpportunityReadService,
       ],
     };
   }

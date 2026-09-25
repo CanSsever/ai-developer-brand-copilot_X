@@ -1,4 +1,5 @@
 import type {
+  ContentOpportunityListResponse,
   DailyDevelopmentSummaryResponse,
   GitHubConnectionSummary,
   ProjectIntelligenceSummary,
@@ -9,6 +10,7 @@ import Link from "next/link";
 
 import { connectionErrorMessage, connectionStatusMessage } from "../github/feedback";
 import { IntelligencePanel } from "./intelligence-panel";
+import { OpportunityPanel } from "./opportunity-panel";
 import { SyncButton } from "./sync-button";
 
 interface DashboardViewProps {
@@ -19,6 +21,8 @@ interface DashboardViewProps {
   readonly intelligenceLoadFailed?: boolean;
   readonly dailySummary?: DailyDevelopmentSummaryResponse | null;
   readonly dailySummaryLoadFailed?: boolean;
+  readonly opportunities?: ContentOpportunityListResponse | null;
+  readonly opportunitiesLoadFailed?: boolean;
   readonly loadFailed: boolean;
   readonly projects: readonly ProjectSummary[];
   readonly selectedProjectId?: string | undefined;
@@ -109,6 +113,8 @@ export function DashboardView({
   intelligenceLoadFailed = false,
   dailySummary = null,
   dailySummaryLoadFailed = false,
+  opportunities = null,
+  opportunitiesLoadFailed = false,
   loadFailed,
   projects,
   selectedProjectId,
@@ -118,6 +124,11 @@ export function DashboardView({
 }: DashboardViewProps) {
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? projects[0];
+  const selectedOpportunities = opportunities?.projectId === selectedProject?.id
+    ? opportunities
+    : null;
+  const opportunityLoadFailure = opportunitiesLoadFailed ||
+    (opportunities !== null && selectedProject !== undefined && opportunities.projectId !== selectedProject.id);
   const successMessage = connectionStatusMessage(status);
   const errorMessage = connectionErrorMessage(error);
 
@@ -246,6 +257,10 @@ export function DashboardView({
           loadFailed={intelligenceLoadFailed}
           dailySummary={dailySummary}
           dailySummaryLoadFailed={dailySummaryLoadFailed}
+        />
+        <OpportunityPanel
+          opportunities={selectedOpportunities}
+          loadFailed={opportunityLoadFailure}
         />
         </>
       ) : null}

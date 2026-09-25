@@ -1,4 +1,5 @@
 import type {
+  ContentOpportunityListResponse,
   DailyDevelopmentSummaryResponse,
   GitHubConnectionSummary,
   ProjectIntelligenceSummary,
@@ -37,6 +38,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   let intelligenceLoadFailed = false;
   let dailySummary: DailyDevelopmentSummaryResponse | null = null;
   let dailySummaryLoadFailed = false;
+  let opportunities: ContentOpportunityListResponse | null = null;
+  let opportunitiesLoadFailed = false;
   const query = await searchParams;
 
   try {
@@ -44,37 +47,47 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       authenticatedApiRequest<readonly ProjectSummary[]>("/projects"),
       authenticatedApiRequest<readonly GitHubConnectionSummary[]>("/github/connections"),
     ]);
-
-    const selectedProjectId = first(query.projectId);
-    const selectedProject =
-      projects.find((project) => project.id === selectedProjectId) ?? projects[0];
-    if (selectedProject) {
-      try {
-        intelligence = await authenticatedApiRequest<ProjectIntelligenceSummary>(
-          `/projects/${encodeURIComponent(selectedProject.id)}/intelligence`
-        );
-      } catch (error) {
-        if (error instanceof AuthenticatedApiError && error.status === 401) {
-          redirect("/?authError=authentication_required");
-        }
-        intelligenceLoadFailed = true;
-      }
-      try {
-        dailySummary = await authenticatedApiRequest<DailyDevelopmentSummaryResponse>(
-          `/projects/${encodeURIComponent(selectedProject.id)}/daily-summaries/today`
-        );
-      } catch (error) {
-        if (error instanceof AuthenticatedApiError && error.status === 401) {
-          redirect("/?authError=authentication_required");
-        }
-        dailySummaryLoadFailed = true;
-      }
-    }
   } catch (error) {
     if (error instanceof AuthenticatedApiError && error.status === 401) {
       redirect("/?authError=authentication_required");
     }
     loadFailed = true;
+  }
+
+  const selectedProjectId = first(query.projectId);
+  const selectedProject =
+    projects.find((project) => project.id === selectedProjectId) ?? projects[0];
+  if (selectedProject) {
+    try {
+      intelligence = await authenticatedApiRequest<ProjectIntelligenceSummary>(
+        `/projects/${encodeURIComponent(selectedProject.id)}/intelligence`
+      );
+    } catch (error) {
+      if (error instanceof AuthenticatedApiError && error.status === 401) {
+        redirect("/?authError=authentication_required");
+      }
+      intelligenceLoadFailed = true;
+    }
+    try {
+      dailySummary = await authenticatedApiRequest<DailyDevelopmentSummaryResponse>(
+        `/projects/${encodeURIComponent(selectedProject.id)}/daily-summaries/today`
+      );
+    } catch (error) {
+      if (error instanceof AuthenticatedApiError && error.status === 401) {
+        redirect("/?authError=authentication_required");
+      }
+      dailySummaryLoadFailed = true;
+    }
+    try {
+      opportunities = await authenticatedApiRequest<ContentOpportunityListResponse>(
+        `/projects/${encodeURIComponent(selectedProject.id)}/opportunities`
+      );
+    } catch (error) {
+      if (error instanceof AuthenticatedApiError && error.status === 401) {
+        redirect("/?authError=authentication_required");
+      }
+      opportunitiesLoadFailed = true;
+    }
   }
 
   return (
@@ -87,6 +100,8 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       intelligenceLoadFailed={intelligenceLoadFailed}
       dailySummary={dailySummary}
       dailySummaryLoadFailed={dailySummaryLoadFailed}
+      opportunities={opportunities}
+      opportunitiesLoadFailed={opportunitiesLoadFailed}
       projects={projects}
       selectedProjectId={first(query.projectId)}
       signOutAction={signOut}
