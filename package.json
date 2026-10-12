@@ -15,6 +15,7 @@
     "test": "pnpm -r --if-present --fail-if-no-match test",
     "test:e2e": "pnpm --filter @developer-brand-copilot/web e2e",
     "test:e2e:install": "pnpm --filter @developer-brand-copilot/web exec playwright install chromium",
+    "phase3:evaluate": "pnpm --filter @developer-brand-copilot/api phase3:evaluate",
     "security:secrets": "node scripts/run-gitleaks.mjs",
     "db:generate": "pnpm --filter @developer-brand-copilot/api db:generate",
     "db:validate": "pnpm --filter @developer-brand-copilot/api db:validate",

@@ -110,11 +110,11 @@ The reviewed task breakdown is adopted as follows:
 
 ## Task 3.8 — Accept/Dismiss Feedback
 
-- [x] Task 3.8 VERIFIED COMPLETE LOCALLY — feedback implementation, development-database migration, database integration tests, repository verification gates, and secret scans passed. See [Opportunity Feedback](./PHASE_3_OPPORTUNITY_FEEDBACK.md).
+- [x] Task 3.8 DELIVERY COMPLETE — commit `7518d396b94c8b80cf0363c795d0840986e3edee` (`feat: add opportunity feedback`); hosted CI #30 passed for the exact SHA. See [Opportunity Feedback](./PHASE_3_OPPORTUNITY_FEEDBACK.md).
 
 ## Task 3.9 — Phase 3 Evaluation & Exit Gate
 
-- [ ] NOT STARTED
+- [ ] DEV EVALUATION VERIFIED / RELEASE EVALUATION PENDING — Task 3.9A development-only scorer evaluation framework and regression gates pass locally; detector-inclusive held-out release evaluation and mandatory human review remain pending.
 
 ## Phase Status
 
