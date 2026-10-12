@@ -3,6 +3,7 @@ import type {
   ContentOpportunityReasonCode,
   ContentOpportunityRecommendedFormat,
   ContentOpportunityType,
+  OpportunityFeedbackDismissReason,
 } from "@developer-brand-copilot/contracts";
 
 export const opportunityReasonLabels: Record<ContentOpportunityReasonCode, string> = {
@@ -40,7 +41,16 @@ export const opportunityTypeLabels: Record<ContentOpportunityType, string> = {
 interface OpportunityPanelProps {
   readonly opportunities: ContentOpportunityListResponse | null;
   readonly loadFailed: boolean;
+  readonly feedbackAction?: (formData: FormData) => Promise<never>;
 }
+
+export const opportunityFeedbackReasonLabels: Record<OpportunityFeedbackDismissReason, string> = {
+  not_relevant: "Not relevant",
+  repetitive: "Repetitive",
+  too_minor: "Too minor",
+  sensitive: "Sensitive",
+  other: "Other",
+};
 
 function formatTime(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -64,7 +74,7 @@ function emptyMessage(opportunities: ContentOpportunityListResponse | null): str
   return processing.statusMessage;
 }
 
-export function OpportunityPanel({ opportunities, loadFailed }: OpportunityPanelProps) {
+export function OpportunityPanel({ opportunities, loadFailed, feedbackAction }: OpportunityPanelProps) {
   if (loadFailed) {
     return (
       <section aria-labelledby="opportunities-heading" className="rounded-lg border border-gray-200 bg-white p-5">
@@ -152,6 +162,41 @@ export function OpportunityPanel({ opportunities, loadFailed }: OpportunityPanel
                       )}
                     </div>
                   </dl>
+                  <div className="mt-4 border-t border-gray-200 pt-4">
+                    <p aria-live="polite" className="text-sm">
+                      <span className="font-medium">Current decision: </span>
+                      {item.currentFeedback
+                        ? item.currentFeedback.action === "accepted"
+                          ? "Accepted"
+                          : `Dismissed${item.currentFeedback.reason ? ` · ${opportunityFeedbackReasonLabels[item.currentFeedback.reason]}` : ""}`
+                        : "No decision yet"}
+                    </p>
+                    {feedbackAction ? (
+                      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <form action={feedbackAction}>
+                          <input name="projectId" type="hidden" value={opportunities?.projectId ?? ""} />
+                          <input name="opportunityId" type="hidden" value={item.id} />
+                          <input name="action" type="hidden" value="accepted" />
+                          <button type="submit">Accept</button>
+                        </form>
+                        <form action={feedbackAction} className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                          <input name="projectId" type="hidden" value={opportunities?.projectId ?? ""} />
+                          <input name="opportunityId" type="hidden" value={item.id} />
+                          <input name="action" type="hidden" value="dismissed" />
+                          <label className="flex flex-col gap-1 text-sm">
+                            <span>Dismiss reason (optional)</span>
+                            <select name="reason" defaultValue="">
+                              <option value="">No reason</option>
+                              {Object.entries(opportunityFeedbackReasonLabels).map(([reason, label]) => (
+                                <option key={reason} value={reason}>{label}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <button type="submit">Dismiss</button>
+                        </form>
+                      </div>
+                    ) : null}
+                  </div>
                 </article>
               </li>
             ))}

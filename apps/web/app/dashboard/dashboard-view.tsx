@@ -23,6 +23,7 @@ interface DashboardViewProps {
   readonly dailySummaryLoadFailed?: boolean;
   readonly opportunities?: ContentOpportunityListResponse | null;
   readonly opportunitiesLoadFailed?: boolean;
+  readonly opportunityFeedbackAction?: (formData: FormData) => Promise<never>;
   readonly loadFailed: boolean;
   readonly projects: readonly ProjectSummary[];
   readonly selectedProjectId?: string | undefined;
@@ -115,6 +116,7 @@ export function DashboardView({
   dailySummaryLoadFailed = false,
   opportunities = null,
   opportunitiesLoadFailed = false,
+  opportunityFeedbackAction,
   loadFailed,
   projects,
   selectedProjectId,
@@ -261,6 +263,7 @@ export function DashboardView({
         <OpportunityPanel
           opportunities={selectedOpportunities}
           loadFailed={opportunityLoadFailure}
+          {...(opportunityFeedbackAction ? { feedbackAction: opportunityFeedbackAction } : {})}
         />
         </>
       ) : null}

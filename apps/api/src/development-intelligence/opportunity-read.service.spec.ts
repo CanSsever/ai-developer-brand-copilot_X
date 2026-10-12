@@ -33,6 +33,7 @@ function opportunity(overrides: Record<string, unknown> = {}) {
     noveltyScore: 0.8, opportunityType: "feature_showcase" as const, priorityScore: 0.88,
     recommendedFormat: "technical_breakdown" as const, scoringVersion: "phase3-opportunity-scoring-v1",
     title: "Safe opportunity title",
+    feedback: [],
     developmentEvents: [event(), event(secondEventId)],
     reasonSignals: [
       { code: "low_novelty" as const, effect: "negative" as const, position: 3, value: 0.3, developmentEvents: [event()] },
@@ -89,6 +90,7 @@ describe("OpportunityReadService", () => {
       id: firstOpportunityId, title: "Safe opportunity title", opportunityType: "feature_showcase",
       recommendedFormat: "technical_breakdown", priorityScore: 0.88, noveltyScore: 0.8, confidence: 0.91,
       scoringVersion: "phase3-opportunity-scoring-v1", createdAt: at.toISOString(),
+      currentFeedback: null,
       reasonSignals: [
         { code: "high_importance", effect: "positive", value: 0.9, developmentEventIds: [eventId] },
         { code: "low_novelty", effect: "negative", value: 0.3, developmentEventIds: [eventId] },
@@ -119,6 +121,34 @@ describe("OpportunityReadService", () => {
         { candidateKey: "asc" }, { id: "asc" },
       ],
     }));
+  });
+
+  it("returns only the authenticated user's accepted or dismissed current feedback", async () => {
+    const accepted = harness([opportunity({ feedback: [{ action: "accepted", reason: null, createdAt: at }] })]);
+    expect((await accepted.service.listForProject(userId, projectId)).items[0]?.currentFeedback).toEqual({
+      action: "accepted", reason: null, createdAt: at.toISOString(),
+    });
+    const dismissed = harness([opportunity({ feedback: [{ action: "dismissed", reason: "repetitive", createdAt: at }] })]);
+    expect((await dismissed.service.listForProject(userId, projectId)).items[0]?.currentFeedback).toEqual({
+      action: "dismissed", reason: "repetitive", createdAt: at.toISOString(),
+    });
+    const query = dismissed.opportunityFindMany.mock.calls[0]?.[0] as { select: { feedback: { where: unknown; take: number } } };
+    expect(query.select.feedback).toMatchObject({ where: { userId, isCurrent: true }, take: 2 });
+  });
+
+  it("keeps historical and replacement-opportunity feedback out of the current card", async () => {
+    const withoutCurrent = harness([opportunity({ feedback: [] })]);
+    expect((await withoutCurrent.service.listForProject(userId, projectId)).items[0]?.currentFeedback).toBeNull();
+    const replacement = harness([opportunity({ id: secondOpportunityId, feedback: [] })]);
+    expect((await replacement.service.listForProject(userId, projectId)).items[0]?.currentFeedback).toBeNull();
+  });
+
+  it("fails closed if more than one current feedback row is returned", async () => {
+    const invalid = harness([opportunity({ feedback: [
+      { action: "accepted", reason: null, createdAt: at },
+      { action: "dismissed", reason: "other", createdAt: at },
+    ] })]);
+    await expect(invalid.service.listForProject(userId, projectId)).rejects.toBeInstanceOf(InternalServerErrorException);
   });
 
   it.each(["missing Project", "another user's Project"])("returns the same safe not-found for %s", async () => {
@@ -264,5 +294,7 @@ describe("OpportunityReadService", () => {
     expect(test.runFindFirst).toHaveBeenCalledTimes(1);
     expect(test.runs.enqueueReprocessing).not.toHaveBeenCalled();
     expect(test.runs.executeClaimed).not.toHaveBeenCalled();
+    const selection = test.opportunityFindMany.mock.calls[0]?.[0] as { select: { feedback: { take: number } } };
+    expect(selection.select.feedback.take).toBe(2);
   });
 });

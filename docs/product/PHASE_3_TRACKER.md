@@ -106,12 +106,11 @@ The reviewed task breakdown is adopted as follows:
 
 ## Task 3.7 — Opportunity Read Model & Dashboard Cards
 
-- [x] Task 3.7 VERIFIED COMPLETE LOCALLY — authenticated owner-scoped opportunity read model and explainable dashboard cards; no provider, scoring, enqueue, GitHub, or persistence mutations. See [Opportunity Read Model](./PHASE_3_OPPORTUNITY_READ_MODEL.md).
-- [x] Focused Task 3.7 API/dashboard tests, Task 3.5/3.6 backend regressions, repository quality gates, and database checks pass; Prisma schema unchanged and migration count remains 19. Not committed or pushed.
+- [x] Task 3.7 DELIVERY COMPLETE — commit `e2d2fbf73c6bf9eb7e879db6de5fd73f063f1596` (`feat: add content opportunity dashboard`); hosted CI GREEN. See [Opportunity Read Model](./PHASE_3_OPPORTUNITY_READ_MODEL.md).
 
 ## Task 3.8 — Accept/Dismiss Feedback
 
-- [ ] NOT STARTED
+- [x] Task 3.8 VERIFIED COMPLETE LOCALLY — feedback implementation, development-database migration, database integration tests, repository verification gates, and secret scans passed. See [Opportunity Feedback](./PHASE_3_OPPORTUNITY_FEEDBACK.md).
 
 ## Task 3.9 — Phase 3 Evaluation & Exit Gate
 

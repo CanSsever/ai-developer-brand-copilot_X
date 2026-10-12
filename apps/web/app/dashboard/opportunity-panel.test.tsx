@@ -1,5 +1,6 @@
 import type { ContentOpportunityCard, ContentOpportunityListResponse, OpportunityProcessingSummary } from "@developer-brand-copilot/contracts";
 import {
+  opportunityFeedbackDismissReasons,
   contentOpportunityReasonCodes,
   contentOpportunityRecommendedFormats,
   contentOpportunityTypes,
@@ -24,6 +25,7 @@ function card(id: string, title: string, priorityScore = 0.88): ContentOpportuni
     id, title, opportunityType: "feature_showcase", recommendedFormat: "technical_breakdown",
     priorityScore, noveltyScore: 0.8, confidence: 0.91, scoringVersion: "phase3-opportunity-scoring-v1",
     createdAt: "2026-09-24T12:00:00.000Z",
+    currentFeedback: null,
     reasonSignals: [
       { code: "high_importance", effect: "positive", value: 0.9, developmentEventIds: [eventId] },
       { code: "low_novelty", effect: "negative", value: 0.3, developmentEventIds: [eventId] },
@@ -110,6 +112,33 @@ describe("OpportunityPanel", () => {
     ]);
     expect(screen.queryByText("high_importance")).not.toBeInTheDocument();
     expect(screen.queryByText("low_novelty")).not.toBeInTheDocument();
+  });
+
+  it("shows Accept and structured Dismiss actions, the current state, and no draft or publish controls", () => {
+    const feedbackAction = async (_formData: FormData): Promise<never> => Promise.reject(new Error("not called"));
+    const accepted = { ...card(firstId, "Current accepted recommendation"), currentFeedback: {
+      action: "accepted" as const, reason: null, createdAt: "2026-09-25T10:00:00.000Z",
+    } };
+    const { rerender } = render(<OpportunityPanel opportunities={response([accepted])} loadFailed={false} feedbackAction={feedbackAction} />);
+    expect(screen.getByText("Current decision:")).toBeInTheDocument();
+    expect(screen.getByText("Accepted")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    const select = screen.getByLabelText("Dismiss reason (optional)");
+    expect(select).toHaveValue("");
+    expect([...select.querySelectorAll("option")].map((option) => option.value)).toEqual([
+      "", ...opportunityFeedbackDismissReasons,
+    ]);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /draft|publish|generate|copy/i })).not.toBeInTheDocument();
+    const dismissed = { ...card(firstId, "Current dismissed recommendation"), currentFeedback: {
+      action: "dismissed" as const, reason: "repetitive" as const, createdAt: "2026-09-25T10:00:00.000Z",
+    } };
+    rerender(<OpportunityPanel opportunities={response([dismissed])} loadFailed={false} feedbackAction={feedbackAction} />);
+    expect(screen.getByText("Dismissed · Repetitive")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Accept" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+    expect(screen.getByText("Low novelty (caution)")).toBeInTheDocument();
   });
 
   it("keeps API ranking order when rendering multiple cards", () => {

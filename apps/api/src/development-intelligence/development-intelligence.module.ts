@@ -36,6 +36,8 @@ import { OpportunityRunWorkerService, defaultOpportunityRunWorkerOptions } from 
 import { OPPORTUNITY_RUN_CLOCK, OPPORTUNITY_RUN_WORKER_OPTIONS } from "./opportunity-run.tokens";
 import { OpportunityReadController } from "./opportunity-read.controller";
 import { OpportunityReadService } from "./opportunity-read.service";
+import { OpportunityFeedbackController } from "./opportunity-feedback.controller";
+import { OpportunityFeedbackService } from "./opportunity-feedback.service";
 
 @Module({})
 export class DevelopmentIntelligenceModule {
@@ -43,7 +45,7 @@ export class DevelopmentIntelligenceModule {
     return {
       module: DevelopmentIntelligenceModule,
       global: true,
-      controllers: [IntelligenceReadController, OpportunityReadController],
+      controllers: [IntelligenceReadController, OpportunityReadController, OpportunityFeedbackController],
       providers: [
         EvidenceGroupingService,
         DevelopmentEventInterpreterService,
@@ -58,6 +60,7 @@ export class DevelopmentIntelligenceModule {
         OpportunityRunService,
         OpportunityRunWorkerService,
         OpportunityReadService,
+        OpportunityFeedbackService,
         { provide: OPPORTUNITY_RUN_CLOCK, useValue: () => new Date() },
         { provide: OPPORTUNITY_RUN_WORKER_OPTIONS, useValue: defaultOpportunityRunWorkerOptions },
         { provide: DAILY_SUMMARY_CLOCK, useValue: () => new Date() },
@@ -90,6 +93,7 @@ export class DevelopmentIntelligenceModule {
         OpportunityRunService,
         OpportunityRunWorkerService,
         OpportunityReadService,
+        OpportunityFeedbackService,
       ],
     };
   }

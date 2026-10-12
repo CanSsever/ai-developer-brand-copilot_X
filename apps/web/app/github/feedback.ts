@@ -5,6 +5,8 @@ const statusMessages: Readonly<Record<string, string>> = {
   project_created: "Project created successfully.",
   repository_connected: "Repository connected successfully.",
   sync_started: "GitHub activity synchronization started.",
+  opportunity_accepted: "Opportunity accepted.",
+  opportunity_dismissed: "Opportunity dismissed.",
 };
 
 const errorMessages: Readonly<Record<string, string>> = {
@@ -25,6 +27,12 @@ const errorMessages: Readonly<Record<string, string>> = {
     "GitHub is temporarily unavailable. Try again later.",
   sync_unavailable:
     "The connected repository is unavailable or you do not have access.",
+  feedback_conflict: "The feedback decision changed. Refresh and try again.",
+  feedback_failed: "Feedback could not be saved. Try again later.",
+  feedback_idempotency_conflict: "This feedback request conflicts with an earlier submission. Try again.",
+  feedback_invalid: "The feedback request was invalid. Choose an approved action and reason.",
+  feedback_stale: "This opportunity is no longer actionable. Refresh the dashboard to see current recommendations.",
+  feedback_unavailable: "This opportunity is unavailable or you do not have access.",
 };
 
 export function connectionStatusMessage(value: string | undefined): string | null {

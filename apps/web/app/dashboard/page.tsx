@@ -12,6 +12,7 @@ import { createClient } from "../../lib/supabase/server";
 import { signOut } from "../auth/actions";
 import { createProject } from "../github/actions";
 import { startManualSync } from "./actions";
+import { submitOpportunityFeedback } from "./opportunity-feedback.actions";
 import { DashboardView } from "./dashboard-view";
 
 export const dynamic = "force-dynamic";
@@ -102,6 +103,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       dailySummaryLoadFailed={dailySummaryLoadFailed}
       opportunities={opportunities}
       opportunitiesLoadFailed={opportunitiesLoadFailed}
+      opportunityFeedbackAction={submitOpportunityFeedback}
       projects={projects}
       selectedProjectId={first(query.projectId)}
       signOutAction={signOut}

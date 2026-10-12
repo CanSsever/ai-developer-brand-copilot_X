@@ -120,6 +120,12 @@ export class OpportunityReadService {
         select: {
           candidateKey: true, confidence: true, createdAt: true, id: true, noveltyScore: true,
           opportunityType: true, priorityScore: true, recommendedFormat: true, scoringVersion: true, title: true,
+          feedback: {
+            where: { userId, isCurrent: true },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+            take: 2,
+            select: { action: true, reason: true, createdAt: true },
+          },
           developmentEvents: {
             orderBy: { developmentEventId: "asc" }, take: opportunityProvenanceMaximum + 1,
             select: { developmentEvent: { select: { id: true, projectId: true, occurredAt: true, title: true, type: true } } },
@@ -148,7 +154,7 @@ export class OpportunityReadService {
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
     const items = page.map((row): ContentOpportunityCard => {
-      if (row.developmentEvents.length < 1 || row.developmentEvents.length > opportunityProvenanceMaximum || row.reasonSignals.length > opportunityReasonSignalMaximum) return invalidPersistedOpportunity();
+      if (row.developmentEvents.length < 1 || row.developmentEvents.length > opportunityProvenanceMaximum || row.reasonSignals.length > opportunityReasonSignalMaximum || row.feedback.length > 1) return invalidPersistedOpportunity();
       const developmentEvents = row.developmentEvents.map(({ developmentEvent }) => {
         if (developmentEvent.projectId !== project.id) return invalidPersistedOpportunity();
         return {
@@ -172,6 +178,11 @@ export class OpportunityReadService {
         id: row.id, title: row.title, opportunityType: row.opportunityType, recommendedFormat: row.recommendedFormat,
         priorityScore: Number(row.priorityScore), noveltyScore: Number(row.noveltyScore), confidence: Number(row.confidence),
         scoringVersion: row.scoringVersion, createdAt: row.createdAt.toISOString(), reasonSignals, developmentEvents,
+        currentFeedback: row.feedback[0] ? {
+          action: row.feedback[0].action,
+          reason: row.feedback[0].reason,
+          createdAt: row.feedback[0].createdAt.toISOString(),
+        } : null,
       };
     });
     const last = hasMore ? page.at(-1) : undefined;

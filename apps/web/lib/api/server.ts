@@ -2,7 +2,7 @@ import { getPublicWebConfig } from "../public-config";
 import { createClient } from "../supabase/server";
 
 export class AuthenticatedApiError extends Error {
-  constructor(readonly status: number) {
+  constructor(readonly status: number, readonly code?: string) {
     super("Authenticated API request failed");
     this.name = "AuthenticatedApiError";
   }
@@ -31,7 +31,17 @@ async function requestWithAccessToken<T>(
   });
 
   if (!response.ok) {
-    throw new AuthenticatedApiError(response.status);
+    let code: string | undefined;
+    try {
+      const errorBody: unknown = await response.json();
+      if (typeof errorBody === "object" && errorBody !== null && "code" in errorBody) {
+        const value = (errorBody as { code?: unknown }).code;
+        if (typeof value === "string" && /^[A-Z0-9_]{1,64}$/.test(value)) code = value;
+      }
+    } catch {
+      // Error bodies are intentionally not forwarded; callers map only status and a safe code.
+    }
+    throw new AuthenticatedApiError(response.status, code);
   }
 
   return (await response.json()) as T;

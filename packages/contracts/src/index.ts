@@ -27,6 +27,17 @@ export type {
   OpportunityProcessingStatus,
   OpportunityProcessingSummary,
 } from "./content-opportunity-read.js";
+export {
+  opportunityFeedbackActions,
+  opportunityFeedbackDismissReasons,
+} from "./opportunity-feedback.js";
+export type {
+  CurrentOpportunityFeedbackRead,
+  OpportunityFeedbackAction,
+  OpportunityFeedbackDismissReason,
+  OpportunityFeedbackMutationRequest,
+  OpportunityFeedbackResponse,
+} from "./opportunity-feedback.js";
 export type {
   CurrentProjectStateSummary,
   DailyDevelopmentSummaryItem,

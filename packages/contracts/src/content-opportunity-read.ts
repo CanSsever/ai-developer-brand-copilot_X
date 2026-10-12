@@ -4,6 +4,7 @@ import type {
   ContentOpportunityRecommendedFormat,
   ContentOpportunityType,
 } from "./content-opportunity.js";
+import type { CurrentOpportunityFeedbackRead } from "./opportunity-feedback.js";
 import type { DevelopmentEventType } from "./development-intelligence.js";
 
 export interface ContentOpportunityListRequest {
@@ -35,6 +36,7 @@ export interface ContentOpportunityCard {
   readonly confidence: number;
   readonly scoringVersion: string;
   readonly createdAt: string;
+  readonly currentFeedback: CurrentOpportunityFeedbackRead | null;
   readonly reasonSignals: readonly ContentOpportunityReasonSignalRead[];
   readonly developmentEvents: readonly ContentOpportunityDevelopmentEventReference[];
 }

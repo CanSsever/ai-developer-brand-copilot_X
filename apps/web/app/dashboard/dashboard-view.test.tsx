@@ -63,6 +63,7 @@ describe("DashboardView", () => {
         opportunityType: "progress_update", recommendedFormat: "short_update",
         priorityScore: 0.8, noveltyScore: 0.9, confidence: 0.9,
         scoringVersion: "phase3-opportunity-scoring-v1", createdAt: "2026-09-24T10:00:00.000Z",
+        currentFeedback: null,
         reasonSignals: [],
         developmentEvents: [{
           developmentEventId: "823e4567-e89b-42d3-a456-426614174000",
